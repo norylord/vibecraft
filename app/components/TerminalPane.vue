@@ -6,7 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 
-const props = defineProps<{ cwd?: string, active: boolean }>()
+const props = defineProps<{ cwd?: string, command?: string, active: boolean }>()
 const emit = defineEmits<{ title: [title: string], exit: [code: number] }>()
 
 const el = useTemplateRef<HTMLDivElement>('el')
@@ -54,6 +54,8 @@ onMounted(async () => {
   term.onData(data => invoke('pty_write', { id, data }))
   term.onResize(({ cols, rows }) => invoke('pty_resize', { id, cols, rows }))
   term.onTitleChange(title => emit('title', title))
+  // Shell прочитает команду из буфера tty после загрузки rc; когда агент выйдет — останется shell
+  if (props.command) invoke('pty_write', { id, data: `${props.command}\r` })
   if (props.active) term.focus()
 })
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { GitCompareIcon, GitMergeIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, SquareTerminalIcon, TicketIcon, XIcon } from '@lucide/vue'
+import type { AgentPreset } from '@/composables/useAgents'
+import { BotIcon, GitCompareIcon, GitMergeIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, TicketIcon, XIcon } from '@lucide/vue'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
 import { useSidebar } from '@/components/ui/sidebar'
@@ -26,6 +27,11 @@ watch(visibleTerminals, (list) => {
 })
 
 const openTerminal = () => open(activeWorktree.value)
+
+const { runnable: agents } = useAgents()
+const agentsOpen = ref(false)
+// Агентов запускаем только в worktree — в домашней папке им нечего делать
+const launch = (agent: AgentPreset) => open(activeWorktree.value, agent)
 
 function togglePanel() {
   if (panel.value?.isCollapsed) panel.value.expand()
@@ -83,7 +89,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             <TabsList variant="line">
               <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center">
                 <TabsTrigger :value="tab.key">
-                  <SquareTerminalIcon />
+                  <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
                   {{ tab.title }}
                 </TabsTrigger>
                 <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeTerminal(tab.key)">
@@ -92,10 +98,39 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                 </Button>
               </div>
             </TabsList>
-            <Button variant="ghost" size="icon-xs" @click="openTerminal">
-              <PlusIcon />
-              <span class="sr-only">Новый терминал</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="ghost" size="icon-xs">
+                  <PlusIcon />
+                  <span class="sr-only">Новый терминал или агент</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem @select="openTerminal">
+                    <SquareTerminalIcon />
+                    Терминал
+                    <DropdownMenuShortcut>⌘T</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <template v-if="active">
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem v-for="agent in agents" :key="agent.name" @select="launch(agent)">
+                      <BotIcon />
+                      {{ agent.name }}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem @select="agentsOpen = true">
+                      <Settings2Icon />
+                      Настроить агентов…
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </template>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <Separator v-if="visibleTerminals.length" />
           <Empty v-else class="flex-1">
@@ -105,10 +140,16 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               </EmptyMedia>
               <EmptyTitle>{{ active ? 'Нет запущенных агентов' : 'Worktree не выбран' }}</EmptyTitle>
               <EmptyDescription>
-                {{ active ? 'Откройте терминал и запустите Claude Code, Codex или Gemini' : 'Выберите worktree в сайдбаре или откройте терминал в домашней папке' }}
+                {{ active ? 'Запустите агента или откройте терминал в этом worktree' : 'Выберите worktree в сайдбаре или откройте терминал в домашней папке' }}
               </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
+              <div v-if="active" class="flex flex-wrap justify-center gap-2">
+                <Button v-for="agent in agents" :key="agent.name" @click="launch(agent)">
+                  <BotIcon data-icon="inline-start" />
+                  {{ agent.name }}
+                </Button>
+              </div>
               <Button variant="outline" @click="openTerminal">
                 <SquareTerminalIcon data-icon="inline-start" />
                 Новый терминал
@@ -126,6 +167,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
           >
             <TerminalPane
               :cwd="tab.cwd"
+              :command="tab.command"
               :active="tab.key === activeTerminal"
               @title="tab.title = $event"
               @exit="closeTerminal(tab.key)"
@@ -168,6 +210,18 @@ useEventListener('keydown', (e: KeyboardEvent) => {
           <CommandShortcut>⌘T</CommandShortcut>
         </CommandItem>
       </CommandGroup>
+      <CommandGroup heading="Агенты">
+        <template v-if="active">
+          <CommandItem v-for="agent in agents" :key="agent.name" :value="`agent-${agent.name}`" @select="run(() => launch(agent))">
+            <BotIcon />
+            Запустить {{ agent.name }}
+          </CommandItem>
+        </template>
+        <CommandItem value="agents-settings" @select="run(() => agentsOpen = true)">
+          <Settings2Icon />
+          Настроить агентов
+        </CommandItem>
+      </CommandGroup>
       <CommandGroup heading="Вид">
         <CommandItem value="sidebar" @select="run(toggleSidebar)">
           <PanelLeftIcon />
@@ -182,4 +236,6 @@ useEventListener('keydown', (e: KeyboardEvent) => {
       </CommandGroup>
     </CommandList>
   </CommandDialog>
+
+  <AgentsDialog v-model:open="agentsOpen" />
 </template>

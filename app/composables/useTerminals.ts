@@ -1,12 +1,15 @@
-export interface TerminalTab { key: string, title: string, cwd?: string }
+import type { AgentPreset } from './useAgents'
+
+// command — что напечатать в shell после старта (агент); без неё — просто терминал
+export interface TerminalTab { key: string, title: string, cwd?: string, command?: string }
 
 // SPA (ssr: false) — модульное состояние общее на всё приложение
 const terminals = ref<TerminalTab[]>([])
 const activeTerminal = ref<string>()
 
 export function useTerminals() {
-  function openTerminal(cwd?: string) {
-    const tab = { key: crypto.randomUUID(), title: 'Терминал', cwd }
+  function openTerminal(cwd?: string, agent?: AgentPreset) {
+    const tab = { key: crypto.randomUUID(), title: agent?.name ?? 'Терминал', cwd, command: agent?.command }
     terminals.value.push(tab)
     activeTerminal.value = tab.key
   }
