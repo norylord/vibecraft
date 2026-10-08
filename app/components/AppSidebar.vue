@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import type { Worktree } from '@/composables/useProjects'
-import { EllipsisIcon, FolderGit2Icon, GitBranchIcon, GitBranchPlusIcon, PlusIcon, RefreshCwIcon, SearchIcon, Trash2Icon, XIcon } from '@lucide/vue'
+import { EllipsisIcon, FolderGit2Icon, GitBranchIcon, GitBranchPlusIcon, PlusIcon, RefreshCwIcon, SearchIcon, Settings2Icon, Trash2Icon, XIcon } from '@lucide/vue'
 import { useEventListener } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 
 const paletteOpen = useState('palette', () => false)
 const { projects, worktrees, activeWorktree, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree } = useProjects()
+const view = useView()
+const { configured: integrations } = useIntegrations()
+
+function select(path: string) {
+  activeWorktree.value = path
+  view.value = 'workspace'
+}
 const { statusIn } = useTerminals()
 
 onMounted(refreshAll)
@@ -79,7 +86,7 @@ async function confirmRemoval() {
         <SidebarGroupContent>
           <SidebarMenu v-if="projects.length">
             <SidebarMenuItem v-for="repo in projects" :key="repo">
-              <SidebarMenuButton :title="repo" @click="activeWorktree = repo">
+              <SidebarMenuButton :title="repo" @click="select(repo)">
                 <FolderGit2Icon />
                 <span>{{ baseName(repo) }}</span>
               </SidebarMenuButton>
@@ -112,7 +119,7 @@ async function confirmRemoval() {
               </DropdownMenu>
               <SidebarMenuSub>
                 <SidebarMenuSubItem v-for="(wt, i) in worktrees[repo]" :key="wt.path">
-                  <SidebarMenuSubButton as="button" class="w-full" :title="wt.path" :is-active="wt.path === activeWorktree" @click="activeWorktree = wt.path">
+                  <SidebarMenuSubButton as="button" class="w-full" :title="wt.path" :is-active="view === 'workspace' && wt.path === activeWorktree" @click="select(wt.path)">
                     <AgentStatusIcon :status="statusIn(wt.path)">
                       <GitBranchIcon />
                     </AgentStatusIcon>
@@ -150,7 +157,32 @@ async function confirmRemoval() {
           </Empty>
         </SidebarGroupContent>
       </SidebarGroup>
+      <!-- Ярлыки только у подключённых интеграций; настраиваются на странице «Настройки» -->
+      <SidebarGroup v-if="integrations.length">
+        <SidebarGroupLabel>Интеграции</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            <SidebarMenuItem v-for="i in integrations" :key="i.id">
+              <SidebarMenuButton :is-active="view === i.id" @click="view = i.id">
+                <component :is="i.icon" />
+                <span>{{ i.name }}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
     </SidebarContent>
+    <SidebarFooter>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton :is-active="view === 'settings'" @click="view = 'settings'">
+            <Settings2Icon />
+            <span>Настройки</span>
+            <Kbd class="ml-auto">⌘,</Kbd>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarFooter>
   </Sidebar>
 
   <Dialog :open="!!newWorktreeFor" @update:open="open => !open && (newWorktreeFor = undefined)">

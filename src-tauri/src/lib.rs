@@ -1,5 +1,6 @@
 mod git;
 mod hooks;
+mod integrations;
 mod pty;
 
 /// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
@@ -37,6 +38,10 @@ pub fn run() {
       git::git_commit,
       git::git_push,
       open_path,
+      integrations::integration_get,
+      integrations::integration_save,
+      integrations::integration_delete,
+      integrations::api_request,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

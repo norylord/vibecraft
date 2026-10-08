@@ -8,9 +8,13 @@ import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
 import { useSidebar } from '@/components/ui/sidebar'
-import { cn } from '@/lib/utils'
 
-const { state, toggleSidebar } = useSidebar()
+// hidden: открыта другая страница — workspace скрыт, но не выгружен, терминалы живут
+defineProps<{ hidden: boolean }>()
+
+const { toggleSidebar } = useSidebar()
+const view = useView()
+const { configured: integrations } = useIntegrations()
 const paletteOpen = useState('palette', () => false)
 // ResizablePanel пробрасывает методы SplitterPanel (collapse/expand)
 const panel = useTemplateRef<InstanceType<typeof SplitterPanel>>('panel')
@@ -30,12 +34,18 @@ watch(visibleTerminals, (list) => {
   if (!list.some(t => t.key === activeTerminal.value)) activeTerminal.value = list.at(-1)?.key
 })
 
-const openTerminal = () => open(activeWorktree.value)
+function openTerminal() {
+  view.value = 'workspace'
+  open(activeWorktree.value)
+}
 
 const { runnable: agents } = useAgents()
 const agentsOpen = ref(false)
 // Агентов запускаем только в worktree — в домашней папке им нечего делать
-const launch = (agent: AgentPreset) => open(activeWorktree.value, agent)
+function launch(agent: AgentPreset) {
+  view.value = 'workspace'
+  open(activeWorktree.value, agent)
+}
 
 // Без app — в Finder
 async function openWorktree(app?: string) {
@@ -82,30 +92,28 @@ useEventListener('keydown', (e: KeyboardEvent) => {
   }
   if (e.code === 'KeyJ') {
     e.preventDefault()
+    view.value = 'workspace'
     togglePanel()
   }
   if (e.code === 'KeyT') {
     e.preventDefault()
     openTerminal()
   }
+  if (e.code === 'Comma') {
+    e.preventDefault()
+    view.value = 'settings'
+  }
 })
 </script>
 
 <template>
-  <SidebarInset class="min-w-0 overflow-hidden">
-    <!-- pl-20 при скрытом сайдбаре: не залезать под «светофор» macOS -->
-    <header
-      data-tauri-drag-region
-      :class="cn('flex h-10 shrink-0 items-center gap-2 px-2 transition-[padding]', state === 'collapsed' && 'pl-20')"
-    >
-      <SidebarTrigger />
-      <span data-tauri-drag-region class="truncate text-xs text-muted-foreground">
-        <template v-if="active">
-          <span class="text-foreground">{{ baseName(active.repo) }}</span> / {{ active.wt.branch ?? 'detached HEAD' }}
-        </template>
-        <template v-else>Worktree не выбран</template>
-      </span>
-      <div class="ml-auto flex items-center gap-1">
+  <SidebarInset v-show="!hidden" class="min-w-0 overflow-hidden">
+    <AppHeader>
+      <template v-if="active">
+        <span class="text-foreground">{{ baseName(active.repo) }}</span> / {{ active.wt.branch ?? 'detached HEAD' }}
+      </template>
+      <template v-else>Worktree не выбран</template>
+      <template #actions>
         <template v-if="active">
           <Tooltip>
             <TooltipTrigger as-child>
@@ -135,9 +143,8 @@ useEventListener('keydown', (e: KeyboardEvent) => {
           </TooltipTrigger>
           <TooltipContent>Правая панель ⌘J</TooltipContent>
         </Tooltip>
-      </div>
-    </header>
-    <Separator />
+      </template>
+    </AppHeader>
 
     <ResizablePanelGroup direction="horizontal" auto-save-id="diogen-workspace" class="min-h-0 flex-1">
       <ResizablePanel :min-size="40">
@@ -298,6 +305,17 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <CommandItem value="open-finder" @select="run(() => openWorktree())">
           <FolderOpenIcon />
           Показать в Finder
+        </CommandItem>
+      </CommandGroup>
+      <CommandGroup heading="Интеграции">
+        <CommandItem v-for="i in integrations" :key="i.id" :value="`integration-${i.id}`" @select="run(() => view = i.id)">
+          <component :is="i.icon" />
+          Открыть {{ i.name }}
+        </CommandItem>
+        <CommandItem value="settings" @select="run(() => view = 'settings')">
+          <Settings2Icon />
+          Настройки
+          <CommandShortcut>⌘,</CommandShortcut>
         </CommandItem>
       </CommandGroup>
       <CommandGroup heading="Вид">
