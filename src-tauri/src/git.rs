@@ -72,6 +72,28 @@ pub async fn git_worktree_add(repo: String, branch: String) -> Result<String, St
   Ok(path)
 }
 
+/// Unified diff всего, что сделано в worktree: от merge-base с base (коммиты ветки + незакоммиченное)
+/// или от HEAD, если base нет. Новые файлы git diff не видит — дописываем их через --no-index.
+/// quotePath=false: иначе кириллица в путях превращается в восьмеричные escape-коды
+#[tauri::command]
+pub async fn git_diff(path: String, base: Option<String>) -> Result<String, String> {
+  const Q: [&str; 2] = ["-c", "core.quotePath=false"];
+  let mut out = match &base {
+    Some(base) => git(&path, &[Q[0], Q[1], "diff", "--merge-base", base])?,
+    None => git(&path, &[Q[0], Q[1], "diff", "HEAD"])?,
+  };
+  let untracked = git(&path, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+  for file in untracked.split('\0').filter(|f| !f.is_empty()) {
+    // --no-index завершается с кодом 1, когда файлы различаются, — поэтому без хелпера git()
+    let o = Command::new("git")
+      .args(["-C", &path, Q[0], Q[1], "diff", "--no-index", "--", "/dev/null", file])
+      .output()
+      .map_err(|e| e.to_string())?;
+    out.push_str(&String::from_utf8_lossy(&o.stdout));
+  }
+  Ok(out)
+}
+
 /// Без force git откажет, если в worktree есть незакоммиченные изменения — это защита работы агента
 #[tauri::command]
 pub async fn git_worktree_remove(repo: String, path: String, force: bool) -> Result<(), String> {

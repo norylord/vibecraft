@@ -17,6 +17,7 @@ pub fn run() {
       git::git_worktrees,
       git::git_worktree_add,
       git::git_worktree_remove,
+      git::git_diff,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
