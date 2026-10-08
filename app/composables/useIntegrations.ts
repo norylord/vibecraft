@@ -27,7 +27,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     tokenHint: 'Профиль → Account Security → New token',
     mePath: '/api/users/me?fields=login,fullName',
     meName: me => me.fullName || me.login,
-    options: [{ key: 'query', label: 'Запрос для списка задач', default: 'for: me #Unresolved' }],
+    options: [{ key: 'query', label: 'Запрос для списка задач', default: 'for: me #Unresolved sort by: updated desc' }],
   },
   {
     id: 'gitlab',

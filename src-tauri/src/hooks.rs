@@ -46,6 +46,17 @@ pub fn install() -> std::io::Result<()> {
   fs::write(dir.join("claude-hooks.json"), CLAUDE_HOOKS)
 }
 
+/// Промпт для агента: файл в ~/.diogen/prompts, агент получает его через "$(cat ...)" — без экранирования в shell
+#[tauri::command]
+pub async fn save_prompt(name: String, text: String) -> Result<(), String> {
+  if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    return Err(format!("недопустимое имя промпта: {name}"));
+  }
+  let dir = dir().join("prompts");
+  fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+  fs::write(dir.join(format!("{name}.md")), text).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
   #[test]

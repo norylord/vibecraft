@@ -42,6 +42,7 @@ pub fn run() {
       integrations::integration_save,
       integrations::integration_delete,
       integrations::api_request,
+      hooks::save_prompt,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

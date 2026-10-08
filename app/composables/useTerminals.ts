@@ -14,17 +14,24 @@ export interface TerminalTab {
   workingOnEnter?: boolean
 }
 
+const program = (command: string) => command.trim().split(/\s+/).find(w => !w.includes('='))
+
+// Начальный промпт позиционным аргументом понимают claude и codex; остальным его вставляют вручную
+export const acceptsPrompt = (command: string) => ['claude', 'codex'].includes(program(command) ?? '')
+
 // Хуки статусов подмешиваются флагами запуска — конфиги пользователя не трогаем.
+// Промпт — файл из save_prompt: "$(cat ...)" избавляет от экранирования текста задачи в shell.
 // Хвост `status.sh exited` снимает статус, когда агент вышел и остался shell
-function withHooks(command: string) {
-  const program = command.trim().split(/\s+/).find(w => !w.includes('='))
-  const flags = program === 'claude'
+function withHooks(command: string, prompt?: string) {
+  const p = program(command)
+  const flags = p === 'claude'
     ? ' --settings "$DIOGEN_DIR/claude-hooks.json"'
-    : program === 'codex'
+    : p === 'codex'
       ? ' -c "notify=[\\"$DIOGEN_DIR/status.sh\\",\\"done\\"]"'
       : undefined
   if (!flags) return { command }
-  return { command: `${command}${flags}; "$DIOGEN_DIR/status.sh" exited`, tracked: true, workingOnEnter: program === 'codex' }
+  const promptArg = prompt ? ` "$(cat "$DIOGEN_DIR/prompts/${prompt}.md")"` : ''
+  return { command: `${command}${flags}${promptArg}; "$DIOGEN_DIR/status.sh" exited`, tracked: true, workingOnEnter: p === 'codex' }
 }
 
 // Сводный статус worktree для сайдбара: важнее то, что требует внимания
@@ -35,8 +42,9 @@ const terminals = ref<TerminalTab[]>([])
 const activeTerminal = ref<string>()
 
 export function useTerminals() {
-  function openTerminal(cwd?: string, agent?: AgentPreset) {
-    const tab: TerminalTab = { key: crypto.randomUUID(), title: agent?.name ?? 'Терминал', cwd, ...(agent && withHooks(agent.command)) }
+  // prompt — имя файла из save_prompt (без .md)
+  function openTerminal(cwd?: string, agent?: AgentPreset, prompt?: string) {
+    const tab: TerminalTab = { key: crypto.randomUUID(), title: agent?.name ?? 'Терминал', cwd, ...(agent && withHooks(agent.command, prompt)) }
     terminals.value.push(tab)
     activeTerminal.value = tab.key
   }

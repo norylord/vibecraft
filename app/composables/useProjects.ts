@@ -69,6 +69,7 @@ export function useProjects() {
     const path = await invoke<string>('git_worktree_add', { repo, branch })
     await refresh(repo)
     activeWorktree.value = path
+    return path
   }
 
   async function removeWorktree(repo: string, path: string, force: boolean) {
