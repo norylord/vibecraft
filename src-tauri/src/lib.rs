@@ -2,6 +2,7 @@ mod git;
 mod hooks;
 mod integrations;
 mod pty;
+mod state;
 
 /// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
 #[tauri::command]
@@ -45,6 +46,8 @@ pub fn run() {
       integrations::integration_delete,
       integrations::api_request,
       hooks::save_prompt,
+      state::state_load,
+      state::state_save,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -58,6 +61,8 @@ pub fn run() {
       if let Err(e) = hooks::install() {
         log::error!("не удалось установить хуки агентов: {e}");
       }
+      // PATH из login-shell считаем заранее, чтобы первый git-запрос не ждал
+      std::thread::spawn(|| git::user_path());
       Ok(())
     })
     .run(tauri::generate_context!())

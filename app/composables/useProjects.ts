@@ -1,12 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { useLocalStorage } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 
 export interface Worktree { path: string, branch: string | null }
 
-// ponytail: проекты в localStorage; tauri-plugin-store — когда понадобится доступ из Rust
-const projects = useLocalStorage<string[]>('diogen:projects', [])
+const projects = persisted<string[]>('projects', [])
 const worktrees = ref<Record<string, Worktree[]>>({})
 const activeWorktree = ref<string>()
 

@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "diogen",
+  "productName": "Diogen",
   "version": "0.1.0",
   "identifier": "studio.lince.diogen",
   "build": {
@@ -41,16 +41,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.png"
     ],
-    "android": {
-      "debugApplicationIdSuffix": ".debug"
+    "category": "DeveloperTool",
+    "macOS": {
+      "signingIdentity": "Diogen Dev",
+      "minimumSystemVersion": "13.0"
     }
   }
 }

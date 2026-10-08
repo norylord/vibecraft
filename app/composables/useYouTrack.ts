@@ -1,6 +1,5 @@
 import type { AgentPreset } from './useAgents'
 import { invoke } from '@tauri-apps/api/core'
-import { useLocalStorage } from '@vueuse/core'
 
 export interface Issue {
   id: string
@@ -18,9 +17,9 @@ const STATE = ['State', 'Состояние', 'Статус']
 const PRIORITY = ['Priority', 'Приоритет']
 
 // worktree → задача: для вкладки «Задача» и комментария при создании MR
-const links = useLocalStorage<Record<string, string>>('diogen:worktree-issues', {})
+const links = persisted<Record<string, string>>('worktree-issues', {})
 // YouTrack-проект → локальный репозиторий: подставляем прошлый выбор
-const repoFor = useLocalStorage<Record<string, string>>('diogen:youtrack-repos', {})
+const repoFor = persisted<Record<string, string>>('youtrack-repos', {})
 
 function toIssue(raw: any): Issue {
   const field = (names: string[]) => raw.customFields?.find((f: any) => names.includes(f.name))?.value?.name

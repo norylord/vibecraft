@@ -9,6 +9,7 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "tauri": "tauri",
+    "bundle": "CI=true tauri build",
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {

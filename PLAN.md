@@ -37,11 +37,11 @@ Nuxt SPA ──invoke/Channel──► Rust core
 
 ## Этапы (≈4 недели)
 
-1. **Каркас (2–3 дня)** — Tauri + Nuxt 4 SPA + shadcn-vue, 3-панельный layout, overlay-titlebar + vibrancy (macOS), command palette `⌘K`, горячие клавиши.
-2. **Ядро (нед. 1)** — PTY ↔ xterm, CRUD worktree, пресеты агентов (команда + args + env), запуск агента в worktree, персист проектов.
-3. **Контроль (нед. 2)** — статусы через хуки, системные уведомления (`tauri-plugin-notification`), diff-view, commit/push, «Открыть в WebStorm».
-4. **Интеграции (нед. 3)** — YouTrack → worktree+агент, GitLab MR/пайплайны, MCP-пресеты (Figma).
-5. **Полировка (нед. 4)** — темы, анимации, онбординг токенов, сборка `.dmg`.
+1. ✅ **Каркас (2–3 дня)** — Tauri + Nuxt 4 SPA + shadcn-vue, 3-панельный layout, overlay-titlebar + vibrancy (macOS), command palette `⌘K`, горячие клавиши.
+2. ✅ **Ядро (нед. 1)** — PTY ↔ xterm, CRUD worktree, пресеты агентов (команда + args + env), запуск агента в worktree, персист проектов.
+3. ✅ **Контроль (нед. 2)** — статусы через хуки, системные уведомления (`tauri-plugin-notification`), diff-view, commit/push, «Открыть в WebStorm».
+4. ✅ **Интеграции (нед. 3)** — страница настроек + ярлыки, YouTrack → worktree+агент, GitLab MR/пайплайны и клонирование. ⏸ MCP-пресеты (Figma) — отложено.
+5. **Полировка (нед. 4)** — ✅ сборка `.app`/`.dmg` (иконка, подпись «Diogen Dev», PATH из login-shell, состояние в `~/.diogen/state.json`); анимации, онбординг.
 
 ## Риски
 

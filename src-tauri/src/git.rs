@@ -1,7 +1,41 @@
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use serde::Serialize;
+
+/// PATH из login-shell пользователя. Приложение из Dock получает урезанный PATH,
+/// и git-хуки (husky, lint-staged) не находят node. Считается один раз
+pub fn user_path() -> &'static str {
+  static PATH: OnceLock<String> = OnceLock::new();
+  PATH.get_or_init(|| {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+      // -i: nvm и т.п. настраивают PATH в .zshrc; маркер отрезает вывод rc-файлов
+      let out = Command::new(shell)
+        .args(["-l", "-i", "-c", "printf '__DIOGEN_PATH__%s' \"$PATH\""])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+      let path = out.ok().and_then(|o| {
+        let text = String::from_utf8_lossy(&o.stdout).into_owned();
+        text.rsplit_once("__DIOGEN_PATH__").map(|(_, p)| p.trim().to_owned())
+      });
+      let _ = tx.send(path.filter(|p| !p.is_empty()));
+    });
+    // Зависший rc-файл не должен навсегда заблокировать git
+    rx.recv_timeout(Duration::from_secs(3)).ok().flatten().unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+  })
+}
+
+fn git_cmd() -> Command {
+  let mut cmd = Command::new("git");
+  cmd.env("PATH", user_path());
+  cmd
+}
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Worktree {
@@ -11,7 +45,7 @@ pub struct Worktree {
 }
 
 fn git(dir: &str, args: &[&str]) -> Result<String, String> {
-  let out = Command::new("git")
+  let out = git_cmd()
     .arg("-C")
     .arg(dir)
     .args(args)
@@ -85,7 +119,7 @@ pub async fn git_diff(path: String, base: Option<String>) -> Result<String, Stri
   let untracked = git(&path, &["ls-files", "--others", "--exclude-standard", "-z"])?;
   for file in untracked.split('\0').filter(|f| !f.is_empty()) {
     // --no-index завершается с кодом 1, когда файлы различаются, — поэтому без хелпера git()
-    let o = Command::new("git")
+    let o = git_cmd()
       .args(["-C", &path, Q[0], Q[1], "diff", "--no-index", "--", "/dev/null", file])
       .output()
       .map_err(|e| e.to_string())?;

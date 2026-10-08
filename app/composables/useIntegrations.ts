@@ -1,7 +1,6 @@
 import type { Component } from 'vue'
 import { GitMergeIcon, TicketIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
-import { useLocalStorage } from '@vueuse/core'
 
 export type IntegrationId = 'youtrack' | 'gitlab'
 
@@ -14,7 +13,7 @@ export interface IntegrationDef {
   // Запрос «кто я» — проверка подключения
   mePath: string
   meName: (me: any) => string
-  // Несекретные параметры — в localStorage, не в Keychain
+  // Несекретные параметры — в ~/.diogen/state.json, не в Keychain
   options?: { key: string, label: string, default: string, placeholder?: string }[]
 }
 
@@ -43,7 +42,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
 
 // Токены живут в Keychain на стороне Rust — сюда приходит только адрес и факт наличия токена
 const stored = ref<Partial<Record<IntegrationId, { url: string, hasToken: boolean } | null>>>({})
-const options = useLocalStorage<Partial<Record<IntegrationId, Record<string, string>>>>('diogen:integration-options', {})
+const options = persisted<Partial<Record<IntegrationId, Record<string, string>>>>('integration-options', {})
 
 async function reload(id: IntegrationId) {
   stored.value[id] = await invoke('integration_get', { id })

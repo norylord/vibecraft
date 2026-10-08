@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Фонарь Диогена: «ищу человека» днём с огнём. Исходник иконки: pnpm tauri icon src-tauri/app-icon.svg -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2b33"/>
+      <stop offset="1" stop-color="#0a0a0d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="540" r="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbbf24" stop-opacity="0.45"/>
+      <stop offset="0.55" stop-color="#f59e0b" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f4f5"/>
+      <stop offset="1" stop-color="#a1a1aa"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fef3c7"/>
+      <stop offset="0.5" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <radialGradient id="flame" cx="512" cy="575" r="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#fff7d6"/>
+      <stop offset="1" stop-color="#fde68a"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="185.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+  <circle cx="512" cy="540" r="330" fill="url(#glow)"/>
+
+  <!-- ручка -->
+  <path d="M462 336 A50 50 0 1 1 562 336" fill="none" stroke="url(#metal)" stroke-width="22" stroke-linecap="round"/>
+  <!-- крышка -->
+  <path d="M452 330 H572 L622 398 H402 Z" fill="url(#metal)"/>
+  <!-- стекло -->
+  <rect x="414" y="398" width="196" height="268" rx="26" fill="url(#glass)"/>
+  <path d="M478 404 V660 M546 404 V660" stroke="#78350f" stroke-opacity="0.22" stroke-width="8"/>
+  <!-- пламя -->
+  <path d="M512 486 C548 530 566 566 548 606 C536 632 488 632 476 606 C458 566 476 530 512 486 Z" fill="url(#flame)"/>
+  <!-- основание -->
+  <path d="M402 666 H622 L594 718 H430 Z" fill="url(#metal)"/>
+  <rect x="418" y="716" width="188" height="28" rx="14" fill="#71717a"/>
+</svg>
