@@ -7,6 +7,7 @@ import { toast } from 'vue-sonner'
 const paletteOpen = useState('palette', () => false)
 const { projects, worktrees, activeWorktree, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree } = useProjects()
 const view = useView()
+const { shortcut, openSettings } = useSettings()
 const { configured: integrations } = useIntegrations()
 
 function select(path: string) {
@@ -70,10 +71,7 @@ async function confirmRemoval() {
       <Button variant="outline" class="justify-start text-muted-foreground" @click="paletteOpen = true">
         <SearchIcon data-icon="inline-start" />
         Поиск и команды
-        <KbdGroup class="ml-auto">
-          <Kbd>⌘</Kbd>
-          <Kbd>K</Kbd>
-        </KbdGroup>
+        <Kbd class="ml-auto">{{ shortcut('palette') }}</Kbd>
       </Button>
     </SidebarHeader>
     <SidebarContent>
@@ -175,10 +173,10 @@ async function confirmRemoval() {
     <SidebarFooter>
       <SidebarMenu>
         <SidebarMenuItem>
-          <SidebarMenuButton :is-active="view === 'settings'" @click="view = 'settings'">
+          <SidebarMenuButton :is-active="view === 'settings'" @click="openSettings()">
             <Settings2Icon />
             <span>Настройки</span>
-            <Kbd class="ml-auto">⌘,</Kbd>
+            <Kbd class="ml-auto">{{ shortcut('settings') }}</Kbd>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

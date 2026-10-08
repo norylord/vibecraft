@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { AgentPreset } from '@/composables/useAgents'
 import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
+import type { ActionId } from '@/utils/hotkeys'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { toast } from 'vue-sonner'
-import { BotIcon, CodeXmlIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, XIcon } from '@lucide/vue'
+import { BotIcon, CodeXmlIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
@@ -35,14 +36,14 @@ function openTerminal() {
 }
 
 const { runnable: agents } = useAgents()
-const agentsOpen = ref(false)
+const { settings, isDark, binding, shortcut, openSettings, zoomBy } = useSettings()
 // Агентов запускаем только в worktree — в домашней папке им нечего делать
 function launch(agent: AgentPreset) {
   view.value = 'workspace'
   open(activeWorktree.value, agent)
 }
 
-// Без app — в Finder
+// Без app — в Finder; редактор задаётся в настройках
 async function openWorktree(app?: string) {
   if (!active.value) return
   try {
@@ -65,12 +66,13 @@ async function onStatus(tab: TerminalTab, status: AgentStatus | 'idle' | 'exited
   const title = `${tab.title}: ${next === 'waiting' ? 'ждёт ввода' : 'закончил'}`
   const body = tab.cwd ? label(tab.cwd) : ''
   if (focused) return void toast(title, { description: body })
+  if (!settings.value.notifications) return
   if (await isPermissionGranted() || await requestPermission() === 'granted') sendNotification({ title, body })
 }
 
 // Старт задачи из YouTrack: правую панель убираем — агенту вся ширина (⌘J вернёт)
 const wideTerminal = useState('wide-terminal', () => 0)
-watch(wideTerminal, () => panel.value?.collapse())
+watch(wideTerminal, () => settings.value.collapsePanelOnStart && panel.value?.collapse())
 
 function togglePanel() {
   if (panel.value?.isCollapsed) panel.value.expand()
@@ -82,26 +84,27 @@ function run(action: () => void) {
   action()
 }
 
-// code, а не key — хоткеи работают в любой раскладке
-useEventListener('keydown', (e: KeyboardEvent) => {
-  if (!e.metaKey) return
-  if (e.code === 'KeyK') {
-    e.preventDefault()
-    paletteOpen.value = !paletteOpen.value
-  }
-  if (e.code === 'KeyJ') {
-    e.preventDefault()
+// Все сочетания — в одном месте; назначаются в настройках «Горячие клавиши».
+// По code, а не key: работают в любой раскладке
+const hotkeys: Record<ActionId, () => void> = {
+  palette: () => (paletteOpen.value = !paletteOpen.value),
+  sidebar: toggleSidebar,
+  panel: () => {
     view.value = 'workspace'
     togglePanel()
-  }
-  if (e.code === 'KeyT') {
-    e.preventDefault()
-    openTerminal()
-  }
-  if (e.code === 'Comma') {
-    e.preventDefault()
-    view.value = 'settings'
-  }
+  },
+  terminal: openTerminal,
+  settings: () => openSettings(),
+  zoomIn: () => zoomBy(0.1),
+  zoomOut: () => zoomBy(-0.1),
+  zoomReset: () => (settings.value.zoom = 1),
+}
+useEventListener('keydown', (e: KeyboardEvent) => {
+  const combo = comboOf(e)
+  const action = combo && ACTIONS.find(a => binding(a.id) === combo)
+  if (!action) return
+  e.preventDefault()
+  hotkeys[action.id]()
 })
 </script>
 
@@ -117,12 +120,12 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <template v-if="active">
           <Tooltip>
             <TooltipTrigger as-child>
-              <Button variant="ghost" size="icon-sm" @click="openWorktree('WebStorm')">
+              <Button variant="ghost" size="icon-sm" @click="openWorktree(settings.editor)">
                 <CodeXmlIcon />
-                <span class="sr-only">Открыть в WebStorm</span>
+                <span class="sr-only">Открыть в {{ settings.editor }}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Открыть в WebStorm</TooltipContent>
+            <TooltipContent>Открыть в {{ settings.editor }}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger as-child>
@@ -141,7 +144,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               <span class="sr-only">Правая панель</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Правая панель ⌘J</TooltipContent>
+          <TooltipContent>Правая панель {{ shortcut('panel') }}</TooltipContent>
         </Tooltip>
       </template>
     </AppHeader>
@@ -176,7 +179,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                   <DropdownMenuItem @select="openTerminal">
                     <SquareTerminalIcon />
                     Терминал
-                    <DropdownMenuShortcut>⌘T</DropdownMenuShortcut>
+                    <DropdownMenuShortcut>{{ shortcut('terminal') }}</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <template v-if="active">
@@ -189,7 +192,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
-                    <DropdownMenuItem @select="agentsOpen = true">
+                    <DropdownMenuItem @select="openSettings('agents')">
                       <Settings2Icon />
                       Настроить агентов…
                     </DropdownMenuItem>
@@ -199,7 +202,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             </DropdownMenu>
           </div>
           <Separator v-if="visibleTerminals.length" />
-          <WelcomePanel v-else-if="!projects.length" class="flex-1" @agents="agentsOpen = true" />
+          <WelcomePanel v-else-if="!projects.length" class="flex-1" @agents="openSettings('agents')" />
           <Empty v-else class="flex-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -220,7 +223,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               <Button variant="outline" @click="openTerminal">
                 <SquareTerminalIcon data-icon="inline-start" />
                 Новый терминал
-                <Kbd>⌘T</Kbd>
+                <Kbd>{{ shortcut('terminal') }}</Kbd>
               </Button>
             </EmptyContent>
           </Empty>
@@ -281,7 +284,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <CommandItem value="terminal" @select="run(openTerminal)">
           <SquareTerminalIcon />
           Новый терминал
-          <CommandShortcut>⌘T</CommandShortcut>
+          <CommandShortcut>{{ shortcut('terminal') }}</CommandShortcut>
         </CommandItem>
       </CommandGroup>
       <CommandGroup heading="Агенты">
@@ -291,15 +294,15 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             Запустить {{ agent.name }}
           </CommandItem>
         </template>
-        <CommandItem value="agents-settings" @select="run(() => agentsOpen = true)">
+        <CommandItem value="agents-settings" @select="run(() => openSettings('agents'))">
           <Settings2Icon />
           Настроить агентов
         </CommandItem>
       </CommandGroup>
       <CommandGroup v-if="active" heading="Worktree">
-        <CommandItem value="open-webstorm" @select="run(() => openWorktree('WebStorm'))">
+        <CommandItem value="open-webstorm" @select="run(() => openWorktree(settings.editor))">
           <CodeXmlIcon />
-          Открыть в WebStorm
+          Открыть в {{ settings.editor }}
         </CommandItem>
         <CommandItem value="open-finder" @select="run(() => openWorktree())">
           <FolderOpenIcon />
@@ -311,26 +314,39 @@ useEventListener('keydown', (e: KeyboardEvent) => {
           <component :is="i.icon" />
           Открыть {{ i.name }}
         </CommandItem>
-        <CommandItem value="settings" @select="run(() => view = 'settings')">
+        <CommandItem value="settings" @select="run(() => openSettings())">
           <Settings2Icon />
           Настройки
-          <CommandShortcut>⌘,</CommandShortcut>
+          <CommandShortcut>{{ shortcut('settings') }}</CommandShortcut>
         </CommandItem>
       </CommandGroup>
       <CommandGroup heading="Вид">
         <CommandItem value="sidebar" @select="run(toggleSidebar)">
           <PanelLeftIcon />
           Сайдбар
-          <CommandShortcut>⌘B</CommandShortcut>
+          <CommandShortcut>{{ shortcut('sidebar') }}</CommandShortcut>
         </CommandItem>
         <CommandItem value="panel" @select="run(togglePanel)">
           <PanelRightIcon />
           Правая панель
-          <CommandShortcut>⌘J</CommandShortcut>
+          <CommandShortcut>{{ shortcut('panel') }}</CommandShortcut>
+        </CommandItem>
+        <CommandItem value="theme" @select="run(() => settings.theme = isDark ? 'light' : 'dark')">
+          <SunMoonIcon />
+          {{ isDark ? 'Светлая тема' : 'Тёмная тема' }}
+        </CommandItem>
+        <CommandItem value="zoom-in" @select="run(() => zoomBy(0.1))">
+          <ZoomInIcon />
+          Увеличить масштаб
+          <CommandShortcut>{{ shortcut('zoomIn') }}</CommandShortcut>
+        </CommandItem>
+        <CommandItem value="zoom-out" @select="run(() => zoomBy(-0.1))">
+          <ZoomOutIcon />
+          Уменьшить масштаб
+          <CommandShortcut>{{ shortcut('zoomOut') }}</CommandShortcut>
         </CommandItem>
       </CommandGroup>
     </CommandList>
   </CommandDialog>
 
-  <AgentsDialog v-model:open="agentsOpen" />
 </template>

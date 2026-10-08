@@ -8,6 +8,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "core:webview:allow-set-webview-zoom",
+    "core:window:allow-set-theme",
     "dialog:default",
     "notification:default"
   ]

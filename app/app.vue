@@ -2,6 +2,8 @@
 import 'vue-sonner/style.css'
 
 const view = useView()
+const { isDark } = useSettings()
+applyAppearance()
 </script>
 
 <template>
@@ -14,5 +16,5 @@ const view = useView()
     <YouTrackPage v-else-if="view === 'youtrack'" />
     <GitLabPage v-else-if="view === 'gitlab'" />
   </SidebarProvider>
-  <Toaster theme="dark" rich-colors />
+  <Toaster :theme="isDark ? 'dark' : 'light'" rich-colors />
 </template>

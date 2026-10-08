@@ -10,7 +10,7 @@ const { configured, stored } = useIntegrations()
 const { statusIn } = useTerminals()
 const { projectFor, mrFor, defaultBranch, createMR } = useGitLab()
 const { links, issue: fetchIssue, comment, issueUrl } = useYouTrack()
-const view = useView()
+const { openSettings } = useSettings()
 
 const hasGitLab = computed(() => configured.value.some(i => i.id === 'gitlab'))
 const hasYouTrack = computed(() => configured.value.some(i => i.id === 'youtrack'))
@@ -138,7 +138,7 @@ async function create() {
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent v-if="active && !hasGitLab">
-        <Button variant="outline" @click="view = 'settings'">
+        <Button variant="outline" @click="openSettings('integrations')">
           Открыть настройки
         </Button>
       </EmptyContent>

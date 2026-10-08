@@ -12,18 +12,31 @@ const props = defineProps<{ cwd?: string, command?: string, tracked?: boolean, w
 const emit = defineEmits<{ title: [title: string], exit: [code: number], status: [status: AgentStatus | 'idle' | 'exited'] }>()
 
 const el = useTemplateRef<HTMLDivElement>('el')
-// Фон = --background (zinc-950): терминал сливается с панелью
+const { settings, isDark } = useSettings()
+
+// Фон = --background темы: терминал сливается с панелью. В светлой теме приглушаем
+// «белые» ANSI-цвета — иначе они пропадают на белом фоне
+const DARK = { background: '#09090b', foreground: '#fafafa', cursor: '#fafafa', selectionBackground: '#3f3f46' }
+const LIGHT = { background: '#ffffff', foreground: '#09090b', cursor: '#09090b', selectionBackground: '#d4d4d8', white: '#a1a1aa', brightWhite: '#71717a' }
+
 const term = new Terminal({
   fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
-  fontSize: 13,
+  fontSize: settings.value.terminalFontSize,
   lineHeight: 1.2,
   cursorBlink: true,
   macOptionIsMeta: true,
   scrollback: 10_000,
-  theme: { background: '#09090b', foreground: '#fafafa', cursor: '#fafafa', selectionBackground: '#3f3f46' },
+  theme: isDark.value ? DARK : LIGHT,
 })
 const fit = new FitAddon()
 term.loadAddon(fit)
+
+// Тема и размер шрифта меняются в настройках на лету
+watch(isDark, dark => (term.options.theme = dark ? DARK : LIGHT))
+watch(() => settings.value.terminalFontSize, (size) => {
+  term.options.fontSize = size
+  fit.fit()
+})
 
 let id: number | undefined
 let disposed = false

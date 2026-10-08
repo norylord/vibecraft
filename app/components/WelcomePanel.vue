@@ -9,7 +9,7 @@ const emit = defineEmits<{ agents: [] }>()
 const { projects, addProject } = useProjects()
 const { runnable: agents } = useAgents()
 const { configured } = useIntegrations()
-const view = useView()
+const { openSettings } = useSettings()
 
 // Установлен ли CLI агента — по PATH из login-shell, как в терминале
 const installed = ref<boolean[]>([])
@@ -37,7 +37,7 @@ const steps = computed(() => [
     title: 'Подключите интеграции',
     description: 'Необязательно: задачи YouTrack → worktree с агентом, MR и пайплайны GitLab',
     done: configured.value.length > 0,
-    action: { label: 'Настройки', run: () => (view.value = 'settings') },
+    action: { label: 'Настройки', run: () => openSettings('integrations') },
   },
 ])
 </script>
