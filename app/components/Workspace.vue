@@ -16,23 +16,16 @@ const panelTabs = [
   { value: 'mr', label: 'MR', icon: GitMergeIcon, title: 'MR не создан', description: 'Создайте merge request в GitLab из ветки worktree' },
 ]
 
-interface TerminalTab { key: string, title: string, cwd?: string }
-const terminals = ref<TerminalTab[]>([])
-const activeTerminal = ref<string>()
+const { activeWorktree, active } = useProjects()
+const { terminals, activeTerminal, openTerminal: open, closeTerminal } = useTerminals()
 
-function openTerminal(cwd?: string) {
-  const tab = { key: crypto.randomUUID(), title: 'Терминал', cwd }
-  terminals.value.push(tab)
-  activeTerminal.value = tab.key
-}
+// Вкладки — только активного worktree (без worktree — терминалы в домашней папке)
+const visibleTerminals = computed(() => terminals.value.filter(t => t.cwd === activeWorktree.value))
+watch(visibleTerminals, (list) => {
+  if (!list.some(t => t.key === activeTerminal.value)) activeTerminal.value = list.at(-1)?.key
+})
 
-function closeTerminal(key: string) {
-  const i = terminals.value.findIndex(t => t.key === key)
-  // Закрытие по × убивает shell, и следом приходит его exit — второй раз ничего не делаем
-  if (i === -1) return
-  terminals.value.splice(i, 1)
-  if (activeTerminal.value === key) activeTerminal.value = terminals.value[Math.min(i, terminals.value.length - 1)]?.key
-}
+const openTerminal = () => open(activeWorktree.value)
 
 function togglePanel() {
   if (panel.value?.isCollapsed) panel.value.expand()
@@ -70,7 +63,12 @@ useEventListener('keydown', (e: KeyboardEvent) => {
       :class="cn('flex h-10 shrink-0 items-center gap-2 px-2 transition-[padding]', state === 'collapsed' && 'pl-20')"
     >
       <SidebarTrigger />
-      <span data-tauri-drag-region class="truncate text-xs text-muted-foreground">Worktree не выбран</span>
+      <span data-tauri-drag-region class="truncate text-xs text-muted-foreground">
+        <template v-if="active">
+          <span class="text-foreground">{{ baseName(active.repo) }}</span> / {{ active.wt.branch ?? 'detached HEAD' }}
+        </template>
+        <template v-else>Worktree не выбран</template>
+      </span>
       <Button variant="ghost" size="icon-sm" class="ml-auto" @click="togglePanel">
         <PanelRightIcon />
         <span class="sr-only">Правая панель</span>
@@ -80,10 +78,10 @@ useEventListener('keydown', (e: KeyboardEvent) => {
 
     <ResizablePanelGroup direction="horizontal" auto-save-id="diogen-workspace" class="min-h-0 flex-1">
       <ResizablePanel :min-size="40">
-        <Tabs v-if="terminals.length" v-model="activeTerminal" class="h-full gap-0">
-          <div class="flex h-9 shrink-0 items-center gap-1 px-2">
+        <Tabs v-model="activeTerminal" class="h-full gap-0">
+          <div v-if="visibleTerminals.length" class="flex h-9 shrink-0 items-center gap-1 px-2">
             <TabsList variant="line">
-              <div v-for="tab in terminals" :key="tab.key" class="group/tab flex items-center">
+              <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center">
                 <TabsTrigger :value="tab.key">
                   <SquareTerminalIcon />
                   {{ tab.title }}
@@ -94,13 +92,31 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                 </Button>
               </div>
             </TabsList>
-            <Button variant="ghost" size="icon-xs" @click="openTerminal()">
+            <Button variant="ghost" size="icon-xs" @click="openTerminal">
               <PlusIcon />
               <span class="sr-only">Новый терминал</span>
             </Button>
           </div>
-          <Separator />
-          <!-- force-mount: неактивные терминалы живут скрытыми, shell не перезапускается -->
+          <Separator v-if="visibleTerminals.length" />
+          <Empty v-else class="flex-1">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <SquareTerminalIcon />
+              </EmptyMedia>
+              <EmptyTitle>{{ active ? 'Нет запущенных агентов' : 'Worktree не выбран' }}</EmptyTitle>
+              <EmptyDescription>
+                {{ active ? 'Откройте терминал и запустите Claude Code, Codex или Gemini' : 'Выберите worktree в сайдбаре или откройте терминал в домашней папке' }}
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" @click="openTerminal">
+                <SquareTerminalIcon data-icon="inline-start" />
+                Новый терминал
+                <Kbd>⌘T</Kbd>
+              </Button>
+            </EmptyContent>
+          </Empty>
+          <!-- Все терминалы всех worktree смонтированы (force-mount): скрытые живут, shell не перезапускается -->
           <TabsContent
             v-for="tab in terminals"
             :key="tab.key"
@@ -116,22 +132,6 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             />
           </TabsContent>
         </Tabs>
-        <Empty v-else class="h-full">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <SquareTerminalIcon />
-            </EmptyMedia>
-            <EmptyTitle>Нет запущенных агентов</EmptyTitle>
-            <EmptyDescription>Выберите worktree и запустите Claude Code, Codex или Gemini</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button variant="outline" @click="openTerminal()">
-              <SquareTerminalIcon data-icon="inline-start" />
-              Новый терминал
-              <Kbd>⌘T</Kbd>
-            </Button>
-          </EmptyContent>
-        </Empty>
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel ref="panel" collapsible :collapsed-size="0" :min-size="20" :default-size="32">
