@@ -68,6 +68,10 @@ async function onStatus(tab: TerminalTab, status: AgentStatus | 'idle' | 'exited
   if (await isPermissionGranted() || await requestPermission() === 'granted') sendNotification({ title, body })
 }
 
+// Старт задачи из YouTrack: правую панель убираем — агенту вся ширина (⌘J вернёт)
+const wideTerminal = useState('wide-terminal', () => 0)
+watch(wideTerminal, () => panel.value?.collapse())
+
 function togglePanel() {
   if (panel.value?.isCollapsed) panel.value.expand()
   else panel.value?.collapse()

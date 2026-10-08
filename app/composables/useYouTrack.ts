@@ -53,14 +53,18 @@ export function useYouTrack() {
 
   // Worktree под задачу (существующий для этой ветки переиспользуем) + агент с промптом из задачи.
   // Возвращает 'clipboard', если агент не принимает промпт аргументом и его надо вставить руками
-  async function start(issue: Issue, repo: string, branch: string, agent: AgentPreset) {
+  // message — стартовое сообщение от пользователя: с чего начать, особенно если в задаче пусто
+  async function start(issue: Issue, repo: string, branch: string, agent: AgentPreset, message = '') {
     repoFor.value[issue.project] = repo
     await refresh(repo)
     const path = worktrees.value[repo]?.find(w => w.branch === branch)?.path ?? await createWorktree(repo, branch)
     activeWorktree.value = path
     links.value[path] = issue.id
 
-    const prompt = `Задача ${issue.id}: ${issue.summary}\n${issueUrl(issue.id)}\n\n${issue.description}`.trim()
+    const prompt = [`Задача ${issue.id}: ${issue.summary}\n${issueUrl(issue.id)}`, issue.description, message]
+      .map(part => part.trim())
+      .filter(Boolean)
+      .join('\n\n')
     await invoke('save_prompt', { name: issue.id, text: prompt })
     if (acceptsPrompt(agent.command)) {
       openTerminal(path, agent, issue.id)

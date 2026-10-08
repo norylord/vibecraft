@@ -8,10 +8,13 @@ const { projects } = useProjects()
 const { runnable: agents } = useAgents()
 const { start, repoFor } = useYouTrack()
 const view = useView()
+// Workspace сворачивает правую панель — агенту вся ширина
+const wideTerminal = useState('wide-terminal', () => 0)
 
 const repo = ref('')
 const agentName = ref('')
 const branch = ref('')
+const message = ref('')
 const busy = ref(false)
 const error = ref<string>()
 
@@ -20,18 +23,20 @@ watch(issue, (i) => {
   repo.value = repoFor.value[i.project] ?? projects.value[0] ?? ''
   agentName.value = agents.value[0]?.name ?? ''
   branch.value = branchName(i.id, i.summary)
+  message.value = ''
   error.value = undefined
 })
 
 async function submit() {
   const agent = agents.value.find(a => a.name === agentName.value)
-  if (!issue.value || !agent || !repo.value) return
+  if (!issue.value || !agent || !repo.value || busy.value) return
   busy.value = true
   try {
-    const result = await start(issue.value, repo.value, branch.value.trim(), agent)
+    const result = await start(issue.value, repo.value, branch.value.trim(), agent, message.value)
     if (result === 'clipboard') toast.info('Промпт задачи в буфере обмена — вставьте его в агента')
     issue.value = undefined
     view.value = 'workspace'
+    wideTerminal.value++
   }
   catch (e) {
     error.value = String(e)
@@ -89,6 +94,18 @@ async function submit() {
             <Input id="start-branch" v-model="branch" class="font-mono" :aria-invalid="!!error || undefined" />
             <FieldDescription>Если ветка или worktree уже есть — переиспользуем</FieldDescription>
             <FieldError :errors="[error]" />
+          </Field>
+          <Field>
+            <FieldLabel for="start-message">Сообщение агенту</FieldLabel>
+            <Textarea
+              id="start-message"
+              v-model="message"
+              rows="3"
+              class="resize-none"
+              :placeholder="issue?.description ? 'Необязательно: уточнения к задаче' : 'В задаче нет описания — напишите, с чего начать'"
+              @keydown.meta.enter.prevent="submit"
+            />
+            <FieldDescription>Добавится к тексту задачи в стартовом промпте. ⌘↵ — начать</FieldDescription>
           </Field>
         </FieldGroup>
         <DialogFooter>

@@ -39,7 +39,10 @@ term.parser.registerOscHandler(777, (data) => {
   return true
 })
 
-onMounted(async () => {
+let started = false
+
+async function start() {
+  started = true
   // xterm меряет ширину символа при open — шрифт должен быть уже загружен
   await document.fonts.load('13px "Geist Mono Variable"')
   if (disposed) return
@@ -76,11 +79,15 @@ onMounted(async () => {
   // Shell прочитает команду из буфера tty после загрузки rc; когда агент выйдет — останется shell
   if (props.command) invoke('pty_write', { id, data: `${props.command}\r` })
   if (props.active) term.focus()
-})
+}
 
 useResizeObserver(el, () => {
-  // Скрытая вкладка имеет нулевой размер — fit посчитал бы 0 колонок
-  if (el.value?.offsetWidth) fit.fit()
+  // Скрытый контейнер (display: none) имеет нулевой размер: xterm измерил бы символы как 0
+  // и застрял на 80 колонках, а агент нарисовал бы узкий интерфейс. Поэтому открываем
+  // терминал и запускаем shell только когда он реально виден, дальше — просто подгоняем размер
+  if (!el.value?.offsetWidth) return
+  if (started) fit.fit()
+  else start()
 })
 
 watch(() => props.active, active => active && nextTick(() => term.focus()))
