@@ -6,6 +6,7 @@ import { toast } from 'vue-sonner'
 
 const paletteOpen = useState('palette', () => false)
 const { projects, worktrees, activeWorktree, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree } = useProjects()
+const { statusIn } = useTerminals()
 
 onMounted(refreshAll)
 // Worktree могли создать или удалить из терминала — перечитываем при возврате в окно
@@ -112,7 +113,9 @@ async function confirmRemoval() {
               <SidebarMenuSub>
                 <SidebarMenuSubItem v-for="(wt, i) in worktrees[repo]" :key="wt.path">
                   <SidebarMenuSubButton as="button" class="w-full" :title="wt.path" :is-active="wt.path === activeWorktree" @click="activeWorktree = wt.path">
-                    <GitBranchIcon />
+                    <AgentStatusIcon :status="statusIn(wt.path)">
+                      <GitBranchIcon />
+                    </AgentStatusIcon>
                     <span>{{ wt.branch ?? 'detached HEAD' }}</span>
                   </SidebarMenuSubButton>
                   <!-- i > 0: основной worktree репозитория удалить нельзя -->

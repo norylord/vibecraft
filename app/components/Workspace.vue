@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import type { AgentPreset } from '@/composables/useAgents'
+import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
+import { toast } from 'vue-sonner'
 import { BotIcon, GitCompareIcon, GitMergeIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, TicketIcon, XIcon } from '@lucide/vue'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
@@ -17,7 +20,7 @@ const panelTabs = [
   { value: 'mr', label: 'MR', icon: GitMergeIcon, title: 'MR не создан', description: 'Создайте merge request в GitLab из ветки worktree' },
 ]
 
-const { activeWorktree, active } = useProjects()
+const { activeWorktree, active, label } = useProjects()
 const { terminals, activeTerminal, openTerminal: open, closeTerminal } = useTerminals()
 
 // Вкладки — только активного worktree (без worktree — терминалы в домашней папке)
@@ -32,6 +35,21 @@ const { runnable: agents } = useAgents()
 const agentsOpen = ref(false)
 // Агентов запускаем только в worktree — в домашней папке им нечего делать
 const launch = (agent: AgentPreset) => open(activeWorktree.value, agent)
+
+async function onStatus(tab: TerminalTab, status: AgentStatus | 'idle' | 'exited') {
+  const next = status === 'idle' || status === 'exited' ? undefined : status
+  // Хуки могут прислать один статус дважды (PermissionRequest + Notification) — уведомляем один раз
+  if (tab.status === next) return
+  tab.status = next
+  if (next !== 'waiting' && next !== 'done') return
+  // Пользователь и так смотрит на этого агента — не отвлекаем
+  const focused = document.hasFocus()
+  if (focused && tab.key === activeTerminal.value) return
+  const title = `${tab.title}: ${next === 'waiting' ? 'ждёт ввода' : 'закончил'}`
+  const body = tab.cwd ? label(tab.cwd) : ''
+  if (focused) return void toast(title, { description: body })
+  if (await isPermissionGranted() || await requestPermission() === 'granted') sendNotification({ title, body })
+}
 
 function togglePanel() {
   if (panel.value?.isCollapsed) panel.value.expand()
@@ -89,7 +107,9 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             <TabsList variant="line">
               <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center">
                 <TabsTrigger :value="tab.key">
-                  <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
+                  <AgentStatusIcon :status="tab.status">
+                    <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
+                  </AgentStatusIcon>
                   {{ tab.title }}
                 </TabsTrigger>
                 <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeTerminal(tab.key)">
@@ -170,6 +190,9 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               :command="tab.command"
               :active="tab.key === activeTerminal"
               @title="tab.title = $event"
+              :tracked="tab.tracked"
+              :working-on-enter="tab.workingOnEnter"
+              @status="onStatus(tab, $event)"
               @exit="closeTerminal(tab.key)"
             />
           </TabsContent>

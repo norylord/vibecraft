@@ -1,9 +1,11 @@
 mod git;
+mod hooks;
 mod pty;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_dialog::init())
     .manage(pty::Ptys::default())
     .invoke_handler(tauri::generate_handler![
@@ -23,6 +25,10 @@ pub fn run() {
             .level(log::LevelFilter::Info)
             .build(),
         )?;
+      }
+      // Без хуков агенты работают, просто без статусов — не роняем приложение
+      if let Err(e) = hooks::install() {
+        log::error!("не удалось установить хуки агентов: {e}");
       }
       Ok(())
     })

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AgentStatus } from '@/composables/useTerminals'
 import '@xterm/xterm/css/xterm.css'
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { useResizeObserver } from '@vueuse/core'
@@ -6,8 +7,9 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 
-const props = defineProps<{ cwd?: string, command?: string, active: boolean }>()
-const emit = defineEmits<{ title: [title: string], exit: [code: number] }>()
+const props = defineProps<{ cwd?: string, command?: string, tracked?: boolean, workingOnEnter?: boolean, active: boolean }>()
+// idle — агента прервали (Esc), exited — агент вышел, остался shell
+const emit = defineEmits<{ title: [title: string], exit: [code: number], status: [status: AgentStatus | 'idle' | 'exited'] }>()
 
 const el = useTemplateRef<HTMLDivElement>('el')
 // Фон = --background (zinc-950): терминал сливается с панелью
@@ -25,6 +27,17 @@ term.loadAddon(fit)
 
 let id: number | undefined
 let disposed = false
+let agentAlive = !!props.tracked
+
+// Статус от хуков агента: ESC ] 777 ; diogen ; <status> BEL (см. src-tauri/src/hooks.rs).
+// Последовательность невидима — xterm её поглощает
+term.parser.registerOscHandler(777, (data) => {
+  if (!data.startsWith('diogen;')) return false
+  const status = data.slice('diogen;'.length) as AgentStatus | 'exited'
+  if (status === 'exited') agentAlive = false
+  emit('status', status)
+  return true
+})
 
 onMounted(async () => {
   // xterm меряет ширину символа при open — шрифт должен быть уже загружен
@@ -51,7 +64,13 @@ onMounted(async () => {
   if (disposed) return void invoke('pty_kill', { id: ptyId })
   id = ptyId
 
-  term.onData(data => invoke('pty_write', { id, data }))
+  term.onData((data) => {
+    invoke('pty_write', { id, data })
+    if (!agentAlive) return
+    // Хук Stop при прерывании не срабатывает — иначе статус «работает» завис бы
+    if (data === '\x1B') emit('status', 'idle')
+    else if (props.workingOnEnter && data.includes('\r')) emit('status', 'working')
+  })
   term.onResize(({ cols, rows }) => invoke('pty_resize', { id, cols, rows }))
   term.onTitleChange(title => emit('title', title))
   // Shell прочитает команду из буфера tty после загрузки rc; когда агент выйдет — останется shell

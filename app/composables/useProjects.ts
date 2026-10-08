@@ -22,6 +22,15 @@ export function useProjects() {
     }
   })
 
+  // «проект / ветка» по пути worktree — для уведомлений
+  function label(path: string) {
+    for (const repo of projects.value) {
+      const wt = worktrees.value[repo]?.find(w => w.path === path)
+      if (wt) return `${baseName(repo)} / ${wt.branch ?? 'detached HEAD'}`
+    }
+    return baseName(path)
+  }
+
   async function refresh(repo: string) {
     try {
       worktrees.value[repo] = await invoke<Worktree[]>('git_worktrees', { repo })
@@ -69,5 +78,5 @@ export function useProjects() {
     await refresh(repo)
   }
 
-  return { projects, worktrees, activeWorktree, active, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree }
+  return { projects, worktrees, activeWorktree, active, label, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree }
 }

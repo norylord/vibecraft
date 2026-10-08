@@ -45,6 +45,8 @@ pub fn pty_spawn(
   }
   cmd.env("TERM", "xterm-256color");
   cmd.env("COLORTERM", "truecolor");
+  // Хуки агентов ссылаются на $DIOGEN_DIR/status.sh и claude-hooks.json
+  cmd.env("DIOGEN_DIR", crate::hooks::dir());
   // У приложения, запущенного из Finder, LANG пустой — без него ломается UTF-8 в shell
   if std::env::var("LANG").is_err() {
     cmd.env("LANG", "en_US.UTF-8");
