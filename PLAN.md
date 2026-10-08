@@ -41,7 +41,7 @@ Nuxt SPA ──invoke/Channel──► Rust core
 2. ✅ **Ядро (нед. 1)** — PTY ↔ xterm, CRUD worktree, пресеты агентов (команда + args + env), запуск агента в worktree, персист проектов.
 3. ✅ **Контроль (нед. 2)** — статусы через хуки, системные уведомления (`tauri-plugin-notification`), diff-view, commit/push, «Открыть в WebStorm».
 4. ✅ **Интеграции (нед. 3)** — страница настроек + ярлыки, YouTrack → worktree+агент, GitLab MR/пайплайны и клонирование. ⏸ MCP-пресеты (Figma) — отложено.
-5. **Полировка (нед. 4)** — ✅ сборка `.app`/`.dmg` (иконка, подпись «Diogen Dev», PATH из login-shell, состояние в `~/.diogen/state.json`); анимации, онбординг.
+5. ✅ **Полировка (нед. 4)** — сборка `.app`/`.dmg` (иконка, подпись «Diogen Dev», PATH из login-shell, состояние в `~/.diogen/state.json`), онбординг первого запуска, анимации.
 
 ## Риски
 

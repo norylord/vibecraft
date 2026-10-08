@@ -68,7 +68,7 @@ async function onClone(r: GitLabProject) {
 </script>
 
 <template>
-  <SidebarInset class="min-w-0 overflow-hidden">
+  <SidebarInset class="min-w-0 overflow-hidden animate-in fade-in duration-200">
     <AppHeader>
       <span class="text-foreground">GitLab</span>
       <template #actions>
@@ -124,7 +124,7 @@ async function onClone(r: GitLabProject) {
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
-          <div v-for="r in filteredRepos" :key="r.path" class="flex items-center gap-3 border-b px-3 py-2">
+          <div v-for="(r, i) in filteredRepos" :key="r.path" class="flex items-center gap-3 border-b px-3 py-2 animate-in fade-in slide-in-from-bottom-1 fill-mode-backwards" :style="{ animationDelay: `${Math.min(i, 15) * 20}ms` }">
             <div class="flex min-w-0 flex-1 flex-col gap-1">
               <span class="flex items-center gap-2 text-xs text-muted-foreground">
                 <span class="truncate font-mono">{{ r.path }}</span>
@@ -159,7 +159,7 @@ async function onClone(r: GitLabProject) {
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
-          <div v-for="mr in list" :key="mr.url" class="flex items-center gap-3 border-b px-3 py-2">
+          <div v-for="(mr, i) in list" :key="mr.url" class="flex items-center gap-3 border-b px-3 py-2 animate-in fade-in slide-in-from-bottom-1 fill-mode-backwards" :style="{ animationDelay: `${Math.min(i, 15) * 20}ms` }">
             <div class="flex min-w-0 flex-1 flex-col gap-1">
               <span class="flex items-center gap-2 text-xs text-muted-foreground">
                 <span class="truncate font-mono">{{ mr.project }} !{{ mr.iid }}</span>

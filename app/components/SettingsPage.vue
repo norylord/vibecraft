@@ -3,7 +3,7 @@ import { INTEGRATIONS } from '@/composables/useIntegrations'
 </script>
 
 <template>
-  <SidebarInset class="min-w-0 overflow-hidden">
+  <SidebarInset class="min-w-0 overflow-hidden animate-in fade-in duration-200">
     <AppHeader>Настройки</AppHeader>
     <div class="min-h-0 flex-1 overflow-auto">
       <div class="mx-auto flex max-w-2xl flex-col gap-4 p-6">

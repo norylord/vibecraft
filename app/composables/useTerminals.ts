@@ -14,16 +14,17 @@ export interface TerminalTab {
   workingOnEnter?: boolean
 }
 
-const program = (command: string) => command.trim().split(/\s+/).find(w => !w.includes('='))
+// Программа агента без префикса из переменных: `FOO=1 claude --model x` → claude
+export const agentProgram = (command: string) => command.trim().split(/\s+/).find(w => !w.includes('='))
 
 // Начальный промпт позиционным аргументом понимают claude и codex; остальным его вставляют вручную
-export const acceptsPrompt = (command: string) => ['claude', 'codex'].includes(program(command) ?? '')
+export const acceptsPrompt = (command: string) => ['claude', 'codex'].includes(agentProgram(command) ?? '')
 
 // Хуки статусов подмешиваются флагами запуска — конфиги пользователя не трогаем.
 // Промпт — файл из save_prompt: "$(cat ...)" избавляет от экранирования текста задачи в shell.
 // Хвост `status.sh exited` снимает статус, когда агент вышел и остался shell
 function withHooks(command: string, prompt?: string) {
-  const p = program(command)
+  const p = agentProgram(command)
   const flags = p === 'claude'
     ? ' --settings "$DIOGEN_DIR/claude-hooks.json"'
     : p === 'codex'

@@ -130,6 +130,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* «Уменьшить движение» в macOS — без анимаций */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
   /* Окно прозрачное (vibrancy): фон задают сами панели */
   html,
   body,

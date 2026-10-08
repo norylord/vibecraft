@@ -19,6 +19,13 @@ async fn open_path(path: String, app: Option<String>) -> Result<(), String> {
   }
 }
 
+/// Какие из программ есть в PATH пользователя (как в его терминале) — для онбординга агентов
+#[tauri::command]
+async fn installed(programs: Vec<String>) -> Vec<bool> {
+  let path = git::user_path();
+  programs.iter().map(|p| std::env::split_paths(path).any(|dir| dir.join(p).is_file())).collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -41,6 +48,7 @@ pub fn run() {
       git::git_remote_url,
       git::git_clone,
       open_path,
+      installed,
       integrations::integration_get,
       integrations::integration_save,
       integrations::integration_delete,

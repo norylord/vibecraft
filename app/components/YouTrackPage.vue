@@ -40,7 +40,7 @@ onMounted(load)
 </script>
 
 <template>
-  <SidebarInset class="min-w-0 overflow-hidden">
+  <SidebarInset class="min-w-0 overflow-hidden animate-in fade-in duration-200">
     <AppHeader>
       <span class="text-foreground">YouTrack</span> · <span class="font-mono">{{ option('youtrack', 'query') }}</span>
       <template #actions>
@@ -74,10 +74,11 @@ onMounted(load)
               </EmptyHeader>
             </Empty>
             <button
-              v-for="issue in filtered"
+              v-for="(issue, i) in filtered"
               :key="issue.id"
               type="button"
-              :class="cn('flex w-full flex-col gap-1 border-b px-3 py-2 text-left hover:bg-muted/50', issue.id === selectedId && 'bg-muted')"
+              :class="cn('flex w-full flex-col gap-1 border-b px-3 py-2 text-left hover:bg-muted/50 animate-in fade-in slide-in-from-bottom-1 fill-mode-backwards', issue.id === selectedId && 'bg-muted')"
+              :style="{ animationDelay: `${Math.min(i, 15) * 20}ms` }"
               @click="selectedId = issue.id"
             >
               <span class="flex items-center gap-2 text-xs text-muted-foreground">

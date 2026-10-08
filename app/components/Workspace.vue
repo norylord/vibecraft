@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
 import { useSidebar } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 
 // hidden: открыта другая страница — workspace скрыт, но не выгружен, терминалы живут
 defineProps<{ hidden: boolean }>()
@@ -19,7 +20,7 @@ const paletteOpen = useState('palette', () => false)
 // ResizablePanel пробрасывает методы SplitterPanel (collapse/expand)
 const panel = useTemplateRef<InstanceType<typeof SplitterPanel>>('panel')
 
-const { activeWorktree, active, label } = useProjects()
+const { projects, activeWorktree, active, label } = useProjects()
 const { terminals, activeTerminal, openTerminal: open, closeTerminal } = useTerminals()
 
 // Вкладки — только активного worktree (без worktree — терминалы в домашней папке)
@@ -101,7 +102,8 @@ useEventListener('keydown', (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <SidebarInset v-show="!hidden" class="min-w-0 overflow-hidden">
+  <!-- animate-in снова срабатывает при каждом возврате со страниц интеграций -->
+  <SidebarInset v-show="!hidden" :class="cn('min-w-0 overflow-hidden', !hidden && 'animate-in fade-in duration-200')">
     <AppHeader>
       <template v-if="active">
         <span class="text-foreground">{{ baseName(active.repo) }}</span> / {{ active.wt.branch ?? 'detached HEAD' }}
@@ -193,6 +195,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             </DropdownMenu>
           </div>
           <Separator v-if="visibleTerminals.length" />
+          <WelcomePanel v-else-if="!projects.length" class="flex-1" @agents="agentsOpen = true" />
           <Empty v-else class="flex-1">
             <EmptyHeader>
               <EmptyMedia variant="icon">
