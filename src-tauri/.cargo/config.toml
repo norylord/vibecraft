@@ -1,0 +1,4 @@
+# Dev-бинарник подписывается постоянным сертификатом «Diogen Dev»: тогда macOS узнаёт приложение
+# после пересборки и не спрашивает пароль к Keychain заново (см. scripts/dev-sign.sh)
+[target.'cfg(target_os = "macos")']
+runner = "scripts/dev-sign.sh"
