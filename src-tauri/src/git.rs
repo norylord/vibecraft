@@ -94,6 +94,52 @@ pub async fn git_diff(path: String, base: Option<String>) -> Result<String, Stri
   Ok(out)
 }
 
+#[derive(Serialize)]
+pub struct Status {
+  /// Незакоммиченные изменения, включая новые файлы
+  changes: usize,
+  /// Коммитов впереди upstream; None — ветку ещё не публиковали
+  ahead: Option<u32>,
+  /// Куда публиковать новую ветку; None — у репозитория нет remote
+  remote: Option<String>,
+}
+
+fn ahead(path: &str) -> Option<u32> {
+  git(path, &["rev-list", "--count", "@{u}..HEAD"]).ok()?.trim().parse().ok()
+}
+
+/// origin, если есть, иначе первый remote репозитория
+fn push_remote(path: &str) -> Option<String> {
+  let remotes = git(path, &["remote"]).ok()?;
+  let remotes: Vec<&str> = remotes.lines().collect();
+  let remote = if remotes.contains(&"origin") { Some("origin") } else { remotes.first().copied() };
+  remote.map(str::to_owned)
+}
+
+#[tauri::command]
+pub async fn git_status(path: String) -> Result<Status, String> {
+  let changes = git(&path, &["status", "--porcelain"])?.lines().count();
+  Ok(Status { changes, ahead: ahead(&path), remote: push_remote(&path) })
+}
+
+// ponytail: git-хуки (husky, lint-staged) берут PATH процесса — в dev он из терминала,
+// в собранном .app урезан; чинить при сборке (fix-path-env)
+#[tauri::command]
+pub async fn git_commit(path: String, message: String) -> Result<(), String> {
+  git(&path, &["add", "-A"])?;
+  git(&path, &["commit", "-m", &message]).map(|_| ())
+}
+
+#[tauri::command]
+pub async fn git_push(path: String) -> Result<(), String> {
+  // Upstream уже есть — git сам знает, куда пушить
+  if ahead(&path).is_some() {
+    return git(&path, &["push"]).map(|_| ());
+  }
+  let remote = push_remote(&path).ok_or("У репозитория нет remote — добавьте его: git remote add origin <url>")?;
+  git(&path, &["push", "-u", &remote, "HEAD"]).map(|_| ())
+}
+
 /// Без force git откажет, если в worktree есть незакоммиченные изменения — это защита работы агента
 #[tauri::command]
 pub async fn git_worktree_remove(repo: String, path: String, force: bool) -> Result<(), String> {

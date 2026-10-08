@@ -3,7 +3,8 @@ import type { AgentPreset } from '@/composables/useAgents'
 import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { toast } from 'vue-sonner'
-import { BotIcon, GitMergeIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, TicketIcon, XIcon } from '@lucide/vue'
+import { BotIcon, CodeXmlIcon, FolderOpenIcon, GitMergeIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, TicketIcon, XIcon } from '@lucide/vue'
+import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
 import { useSidebar } from '@/components/ui/sidebar'
@@ -35,6 +36,17 @@ const { runnable: agents } = useAgents()
 const agentsOpen = ref(false)
 // Агентов запускаем только в worktree — в домашней папке им нечего делать
 const launch = (agent: AgentPreset) => open(activeWorktree.value, agent)
+
+// Без app — в Finder
+async function openWorktree(app?: string) {
+  if (!active.value) return
+  try {
+    await invoke('open_path', { path: active.value.wt.path, app })
+  }
+  catch (e) {
+    toast.error(String(e))
+  }
+}
 
 async function onStatus(tab: TerminalTab, status: AgentStatus | 'idle' | 'exited') {
   const next = status === 'idle' || status === 'exited' ? undefined : status
@@ -93,10 +105,37 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         </template>
         <template v-else>Worktree не выбран</template>
       </span>
-      <Button variant="ghost" size="icon-sm" class="ml-auto" @click="togglePanel">
-        <PanelRightIcon />
-        <span class="sr-only">Правая панель</span>
-      </Button>
+      <div class="ml-auto flex items-center gap-1">
+        <template v-if="active">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button variant="ghost" size="icon-sm" @click="openWorktree('WebStorm')">
+                <CodeXmlIcon />
+                <span class="sr-only">Открыть в WebStorm</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Открыть в WebStorm</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button variant="ghost" size="icon-sm" @click="openWorktree()">
+                <FolderOpenIcon />
+                <span class="sr-only">Показать в Finder</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Показать в Finder</TooltipContent>
+          </Tooltip>
+        </template>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="icon-sm" @click="togglePanel">
+              <PanelRightIcon />
+              <span class="sr-only">Правая панель</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Правая панель ⌘J</TooltipContent>
+        </Tooltip>
+      </div>
     </header>
     <Separator />
 
@@ -249,6 +288,16 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <CommandItem value="agents-settings" @select="run(() => agentsOpen = true)">
           <Settings2Icon />
           Настроить агентов
+        </CommandItem>
+      </CommandGroup>
+      <CommandGroup v-if="active" heading="Worktree">
+        <CommandItem value="open-webstorm" @select="run(() => openWorktree('WebStorm'))">
+          <CodeXmlIcon />
+          Открыть в WebStorm
+        </CommandItem>
+        <CommandItem value="open-finder" @select="run(() => openWorktree())">
+          <FolderOpenIcon />
+          Показать в Finder
         </CommandItem>
       </CommandGroup>
       <CommandGroup heading="Вид">

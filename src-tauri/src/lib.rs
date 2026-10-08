@@ -2,6 +2,21 @@ mod git;
 mod hooks;
 mod pty;
 
+/// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
+#[tauri::command]
+async fn open_path(path: String, app: Option<String>) -> Result<(), String> {
+  let mut cmd = std::process::Command::new("open");
+  if let Some(app) = &app {
+    cmd.args(["-a", app]);
+  }
+  let out = cmd.arg(&path).output().map_err(|e| e.to_string())?;
+  if out.status.success() {
+    Ok(())
+  } else {
+    Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+  }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -18,6 +33,10 @@ pub fn run() {
       git::git_worktree_add,
       git::git_worktree_remove,
       git::git_diff,
+      git::git_status,
+      git::git_commit,
+      git::git_push,
+      open_path,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
