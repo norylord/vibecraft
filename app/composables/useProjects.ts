@@ -42,18 +42,18 @@ export function useProjects() {
 
   const refreshAll = () => Promise.all(projects.value.map(refresh))
 
+  // Любая папка внутри репозитория → проект по корню; ошибки git пробрасываются
+  async function addPath(dir: string) {
+    const repo = await invoke<string>('git_root', { path: dir })
+    if (!projects.value.includes(repo)) projects.value.push(repo)
+    await refresh(repo)
+    activeWorktree.value = repo
+    return repo
+  }
+
   async function addProject() {
     const dir = await open({ directory: true, title: 'Выберите git-репозиторий' })
-    if (!dir) return
-    try {
-      const repo = await invoke<string>('git_root', { path: dir })
-      if (!projects.value.includes(repo)) projects.value.push(repo)
-      await refresh(repo)
-      activeWorktree.value = repo
-    }
-    catch (e) {
-      toast.error(String(e))
-    }
+    if (dir) await addPath(dir).catch(e => toast.error(String(e)))
   }
 
   // Убирает только из списка: на диске ничего не трогаем
@@ -79,5 +79,5 @@ export function useProjects() {
     await refresh(repo)
   }
 
-  return { projects, worktrees, activeWorktree, active, label, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree }
+  return { projects, worktrees, activeWorktree, active, label, refresh, refreshAll, addPath, addProject, removeProject, createWorktree, removeWorktree }
 }

@@ -15,7 +15,7 @@ export interface IntegrationDef {
   mePath: string
   meName: (me: any) => string
   // Несекретные параметры — в localStorage, не в Keychain
-  options?: { key: string, label: string, default: string }[]
+  options?: { key: string, label: string, default: string, placeholder?: string }[]
 }
 
 export const INTEGRATIONS: IntegrationDef[] = [
@@ -37,6 +37,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     tokenHint: 'Preferences → Access tokens, scope: api',
     mePath: '/api/v4/user',
     meName: me => me.name || me.username,
+    options: [{ key: 'cloneDir', label: 'Папка для клонирования репозиториев', default: '', placeholder: 'Спросим при первом клонировании' }],
   },
 ]
 
@@ -61,6 +62,10 @@ export function useIntegrations() {
     return options.value[id]?.[key] || def?.default || ''
   }
 
+  function setOption(id: IntegrationId, key: string, value: string) {
+    options.value[id] = { ...options.value[id], [key]: value }
+  }
+
   // token: undefined — оставить сохранённый
   async function save(id: IntegrationId, url: string, token?: string, values?: Record<string, string>) {
     await invoke('integration_save', { id, url, token: token || undefined })
@@ -81,5 +86,5 @@ export function useIntegrations() {
     return def.meName(await api(id, def.mePath))
   }
 
-  return { stored, configured, option, save, remove, api, whoami }
+  return { stored, configured, option, setOption, save, remove, api, whoami }
 }

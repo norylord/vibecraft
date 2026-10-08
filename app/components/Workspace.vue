@@ -3,7 +3,7 @@ import type { AgentPreset } from '@/composables/useAgents'
 import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { toast } from 'vue-sonner'
-import { BotIcon, CodeXmlIcon, FolderOpenIcon, GitMergeIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, TicketIcon, XIcon } from '@lucide/vue'
+import { BotIcon, CodeXmlIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, XIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
@@ -18,12 +18,6 @@ const { configured: integrations } = useIntegrations()
 const paletteOpen = useState('palette', () => false)
 // ResizablePanel пробрасывает методы SplitterPanel (collapse/expand)
 const panel = useTemplateRef<InstanceType<typeof SplitterPanel>>('panel')
-
-// Заглушки до интеграций (неделя 3); «Изменения» — ChangesPanel
-const panelTabs = [
-  { value: 'task', label: 'Задача', icon: TicketIcon, title: 'Задача не привязана', description: 'Запустите агента из задачи YouTrack' },
-  { value: 'mr', label: 'MR', icon: GitMergeIcon, title: 'MR не создан', description: 'Создайте merge request в GitLab из ветки worktree' },
-]
 
 const { activeWorktree, active, label } = useProjects()
 const { terminals, activeTerminal, openTerminal: open, closeTerminal } = useTerminals()
@@ -251,23 +245,21 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             <TabsTrigger value="diff">
               Изменения
             </TabsTrigger>
-            <TabsTrigger v-for="tab in panelTabs" :key="tab.value" :value="tab.value">
-              {{ tab.label }}
+            <TabsTrigger value="task">
+              Задача
+            </TabsTrigger>
+            <TabsTrigger value="mr">
+              MR
             </TabsTrigger>
           </TabsList>
           <TabsContent value="diff" class="min-h-0">
             <ChangesPanel />
           </TabsContent>
-          <TabsContent v-for="tab in panelTabs" :key="tab.value" :value="tab.value">
-            <Empty class="h-full">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <component :is="tab.icon" />
-                </EmptyMedia>
-                <EmptyTitle>{{ tab.title }}</EmptyTitle>
-                <EmptyDescription>{{ tab.description }}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+          <TabsContent value="task" class="min-h-0">
+            <TaskPanel />
+          </TabsContent>
+          <TabsContent value="mr" class="min-h-0">
+            <MergeRequestPanel />
           </TabsContent>
         </Tabs>
       </ResizablePanel>

@@ -92,7 +92,7 @@ async function onRemove() {
           </Field>
           <Field v-for="o in def.options" :key="o.key">
             <FieldLabel :for="`${formId}-${o.key}`">{{ o.label }}</FieldLabel>
-            <Input :id="`${formId}-${o.key}`" v-model="values[o.key]" :placeholder="o.default" class="font-mono" />
+            <Input :id="`${formId}-${o.key}`" v-model="values[o.key]" :placeholder="o.placeholder ?? o.default" class="font-mono" />
           </Field>
         </FieldGroup>
       </form>

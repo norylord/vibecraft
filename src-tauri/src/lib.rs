@@ -37,6 +37,8 @@ pub fn run() {
       git::git_status,
       git::git_commit,
       git::git_push,
+      git::git_remote_url,
+      git::git_clone,
       open_path,
       integrations::integration_get,
       integrations::integration_save,

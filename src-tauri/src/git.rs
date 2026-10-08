@@ -116,6 +116,29 @@ fn push_remote(path: &str) -> Option<String> {
   remote.map(str::to_owned)
 }
 
+/// URL того remote, куда пушим: по нему фронтенд находит проект в GitLab
+#[tauri::command]
+pub async fn git_remote_url(path: String) -> Option<String> {
+  let remote = push_remote(&path)?;
+  git(&path, &["remote", "get-url", &remote]).ok().map(|s| s.trim().to_owned())
+}
+
+/// Клон в <dir>/<name>. Если там уже этот же репозиторий — просто возвращаем путь
+#[tauri::command]
+pub async fn git_clone(url: String, dir: String, name: String) -> Result<String, String> {
+  if name.is_empty() || name.contains('/') || name.starts_with('.') {
+    return Err(format!("недопустимое имя папки: {name}"));
+  }
+  let path = Path::new(&dir).join(&name).to_string_lossy().into_owned();
+  if Path::new(&path).exists() {
+    let same = git(&path, &["remote", "get-url", "origin"]).is_ok_and(|u| u.trim() == url);
+    return if same { Ok(path) } else { Err(format!("Папка {path} уже занята другим содержимым")) };
+  }
+  std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+  git(&dir, &["clone", &url, &name])?;
+  Ok(path)
+}
+
 #[tauri::command]
 pub async fn git_status(path: String) -> Result<Status, String> {
   let changes = git(&path, &["status", "--porcelain"])?.lines().count();
@@ -154,6 +177,22 @@ pub async fn git_worktree_remove(repo: String, path: String, force: bool) -> Res
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn clone_reuses_same_repo_and_rejects_other() {
+    let tmp = std::env::temp_dir().join(format!("diogen-clone-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let url = tmp.join("origin.git").to_string_lossy().into_owned();
+    git(&tmp.to_string_lossy(), &["init", "--bare", "-q", &url]).unwrap();
+    let dir = tmp.join("clones").to_string_lossy().into_owned();
+    let clone = |url: &str| tauri::async_runtime::block_on(git_clone(url.into(), dir.clone(), "proj".into()));
+
+    let path = clone(&url).unwrap();
+    assert!(Path::new(&path).join(".git").exists());
+    assert_eq!(clone(&url).unwrap(), path, "тот же репозиторий — переиспользуем");
+    assert!(clone("/elsewhere/other.git").is_err(), "папка занята другим репозиторием");
+    std::fs::remove_dir_all(&tmp).ok();
+  }
 
   #[test]
   fn parses_porcelain() {

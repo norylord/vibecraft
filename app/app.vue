@@ -12,7 +12,7 @@ const view = useView()
     <Workspace :hidden="view !== 'workspace'" />
     <SettingsPage v-if="view === 'settings'" />
     <YouTrackPage v-else-if="view === 'youtrack'" />
-    <IntegrationPage v-else-if="view !== 'workspace'" :id="view" />
+    <GitLabPage v-else-if="view === 'gitlab'" />
   </SidebarProvider>
   <Toaster theme="dark" rich-colors />
 </template>

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { Issue } from '@/composables/useYouTrack'
 import { ExternalLinkIcon, PlayIcon, RefreshCwIcon, SearchIcon, TicketIcon } from '@lucide/vue'
-import { invoke } from '@tauri-apps/api/core'
-import { toast } from 'vue-sonner'
 import { cn } from '@/lib/utils'
 
 const { issues: fetchIssues, issueUrl, links } = useYouTrack()
@@ -39,22 +37,6 @@ async function load() {
 }
 onMounted(load)
 
-const rtf = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' })
-const UNITS = [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]] as const
-function ago(ts: number) {
-  const seconds = (ts - Date.now()) / 1000
-  const unit = UNITS.find(([, s]) => Math.abs(seconds) >= s)
-  return unit ? rtf.format(Math.round(seconds / unit[1]), unit[0]) : 'только что'
-}
-
-async function openInBrowser(id: string) {
-  try {
-    await invoke('open_path', { path: issueUrl(id) })
-  }
-  catch (e) {
-    toast.error(String(e))
-  }
-}
 </script>
 
 <template>
@@ -126,7 +108,7 @@ async function openInBrowser(id: string) {
                 <PlayIcon data-icon="inline-start" />
                 Начать
               </Button>
-              <Button variant="outline" @click="openInBrowser(selected.id)">
+              <Button variant="outline" @click="openExternal(issueUrl(selected.id))">
                 <ExternalLinkIcon data-icon="inline-start" />
                 Открыть в YouTrack
               </Button>

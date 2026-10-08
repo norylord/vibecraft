@@ -46,6 +46,10 @@ export function useYouTrack() {
     return raw.map(toIssue)
   }
 
+  const issue = async (id: string) => toIssue(await api('youtrack', `/api/issues/${id}?fields=${FIELDS}`))
+
+  const comment = (id: string, text: string) => api('youtrack', `/api/issues/${id}/comments?fields=id`, 'POST', { text })
+
   const issueUrl = (id: string) => `${stored.value.youtrack?.url}/issue/${id}`
 
   // Worktree под задачу (существующий для этой ветки переиспользуем) + агент с промптом из задачи.
@@ -68,5 +72,5 @@ export function useYouTrack() {
     return 'clipboard' as const
   }
 
-  return { issues, issueUrl, start, links, repoFor }
+  return { issues, issue, comment, issueUrl, start, links, repoFor }
 }
