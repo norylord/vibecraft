@@ -55,6 +55,7 @@ async function openWorktree(app?: string) {
 }
 
 async function onStatus(tab: TerminalTab, status: AgentStatus | 'idle' | 'exited') {
+  if (status === 'exited') tab.exited = true
   const next = status === 'idle' || status === 'exited' ? undefined : status
   // Хуки могут прислать один статус дважды (PermissionRequest + Notification) — уведомляем один раз
   if (tab.status === next) return
@@ -236,6 +237,8 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             class="min-h-0 data-[state=inactive]:hidden"
           >
             <TerminalPane
+              :tab-key="tab.key"
+              :restored="tab.restored"
               :cwd="tab.cwd"
               :command="tab.command"
               :active="tab.key === activeTerminal"

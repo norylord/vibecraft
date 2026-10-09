@@ -8,10 +8,14 @@ export interface Issue {
   updated: number
   project: string
   state?: string
+  // Порядок статуса в бандле — для порядка колонок доски
+  stateOrder?: number
+  // Имя поля статуса в этом инстансе — для команды смены статуса
+  stateField?: string
   priority?: string
 }
 
-const FIELDS = 'idReadable,summary,description,updated,project(shortName),customFields(name,value(name))'
+const FIELDS = 'idReadable,summary,description,updated,project(shortName),customFields(name,value(name,ordinal))'
 // Названия полей настраиваются в каждом инстансе — берём распространённые
 const STATE = ['State', 'Состояние', 'Статус']
 const PRIORITY = ['Priority', 'Приоритет']
@@ -22,15 +26,18 @@ const links = persisted<Record<string, string>>('worktree-issues', {})
 const repoFor = persisted<Record<string, string>>('youtrack-repos', {})
 
 function toIssue(raw: any): Issue {
-  const field = (names: string[]) => raw.customFields?.find((f: any) => names.includes(f.name))?.value?.name
+  const field = (names: string[]) => raw.customFields?.find((f: any) => names.includes(f.name))
+  const state = field(STATE)
   return {
     id: raw.idReadable,
     summary: raw.summary,
     description: raw.description ?? '',
     updated: raw.updated,
     project: raw.project?.shortName ?? '',
-    state: field(STATE),
-    priority: field(PRIORITY),
+    state: state?.value?.name,
+    stateOrder: state?.value?.ordinal,
+    stateField: state?.name,
+    priority: field(PRIORITY)?.value?.name,
   }
 }
 
@@ -48,6 +55,10 @@ export function useYouTrack() {
   const issue = async (id: string) => toIssue(await api('youtrack', `/api/issues/${id}?fields=${FIELDS}`))
 
   const comment = (id: string, text: string) => api('youtrack', `/api/issues/${id}/comments?fields=id`, 'POST', { text })
+
+  // Командой, а не правкой customFields: YouTrack сам разберётся с типом поля и проверит workflow
+  const setState = (issue: Issue, state: string) =>
+    api('youtrack', '/api/commands', 'POST', { query: `${issue.stateField} {${state}}`, issues: [{ idReadable: issue.id }] })
 
   const issueUrl = (id: string) => `${stored.value.youtrack?.url}/issue/${id}`
 
@@ -75,5 +86,5 @@ export function useYouTrack() {
     return 'clipboard' as const
   }
 
-  return { issues, issue, comment, issueUrl, start, links, repoFor }
+  return { issues, issue, comment, setState, issueUrl, start, links, repoFor }
 }

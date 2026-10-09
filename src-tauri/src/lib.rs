@@ -2,6 +2,7 @@ mod git;
 mod hooks;
 mod integrations;
 mod pty;
+mod ptyhost;
 mod state;
 
 /// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
@@ -26,6 +27,15 @@ async fn installed(programs: Vec<String>) -> Vec<bool> {
   programs.iter().map(|p| std::env::split_paths(path).any(|dir| dir.join(p).is_file())).collect()
 }
 
+/// Запуск в роли хоста терминалов (`diogen --pty-host`) вместо окна приложения
+pub fn pty_host() -> bool {
+  if std::env::args().nth(1).as_deref() != Some(ptyhost::ARG) {
+    return false;
+  }
+  let _ = ptyhost::run();
+  true
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -33,7 +43,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .manage(pty::Ptys::default())
     .invoke_handler(tauri::generate_handler![
-      pty::pty_spawn,
+      pty::pty_open,
       pty::pty_write,
       pty::pty_resize,
       pty::pty_kill,

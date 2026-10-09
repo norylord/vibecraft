@@ -1,105 +1,119 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::time::Duration;
 
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Manager, State};
 
-struct Session {
-  master: Box<dyn MasterPty + Send>,
-  writer: Box<dyn Write + Send>,
-  killer: Box<dyn ChildKiller + Send + Sync>,
-}
+use crate::ptyhost::{self, read_frame, size_bytes, write_frame};
 
+/// Подключения к сессиям хоста по ключу вкладки
 #[derive(Default)]
-pub struct Ptys {
-  next_id: AtomicU32,
-  sessions: Mutex<HashMap<u32, Session>>,
+pub struct Ptys(Mutex<HashMap<String, UnixStream>>);
+
+/// Хост терминалов (см. ptyhost.rs); нет его — запускаем. Своя группа процессов:
+/// Ctrl+C в терминале `tauri dev` не должен убить агентов
+fn connect() -> Result<UnixStream, String> {
+  if let Ok(stream) = UnixStream::connect(ptyhost::socket()) {
+    return Ok(stream);
+  }
+  let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+  let mut host = Command::new(exe)
+    .arg(ptyhost::ARG)
+    .process_group(0)
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .map_err(|e| e.to_string())?;
+  // Ждём в фоне: иначе вышедший хост висел бы зомби до закрытия приложения
+  std::thread::spawn(move || host.wait());
+  for _ in 0..100 {
+    std::thread::sleep(Duration::from_millis(20));
+    if let Ok(stream) = UnixStream::connect(ptyhost::socket()) {
+      return Ok(stream);
+    }
+  }
+  Err("не удалось запустить хост терминалов".into())
 }
 
-fn size(cols: u16, rows: u16) -> PtySize {
-  PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }
+/// Ok(None) — сессии нет (восстановленная вкладка, а агент завершился, пока приложение было закрыто)
+fn handshake(open: &serde_json::Value) -> Result<Option<(UnixStream, Vec<u8>)>, String> {
+  let mut stream = connect()?;
+  write_frame(&mut stream, b'o', open.to_string().as_bytes()).map_err(|e| e.to_string())?;
+  match read_frame(&mut stream).map_err(|e| e.to_string())? {
+    (b'p', opened) => Ok(Some((stream, opened))),
+    _ => Ok(None),
+  }
 }
 
-/// Запускает login-shell пользователя: так подтягивается PATH из ~/.zprofile (nvm, brew и т.п.),
-/// которого у GUI-приложения на macOS нет. Агенты потом запускаются командой внутри этого shell.
+/// Открывает вкладку в хосте: spawn — новый login-shell, иначе только переподключение.
+/// Первое сообщение в on_data — размер PTY (cols, rows по u16) и хвост вывода для восстановления экрана.
+/// cols/rows = 0 — размер не менять (вкладка скрыта и ещё не измерена)
 #[tauri::command]
-pub fn pty_spawn(
+pub async fn pty_open(
   app: AppHandle,
-  state: State<'_, Ptys>,
+  key: String,
   cwd: Option<String>,
   cols: u16,
   rows: u16,
+  spawn: bool,
   on_data: Channel<InvokeResponseBody>,
   on_exit: Channel<u32>,
-) -> Result<u32, String> {
-  let pair = native_pty_system().openpty(size(cols, rows)).map_err(|e| e.to_string())?;
+) -> Result<bool, String> {
+  let open = serde_json::json!({ "id": key, "cwd": cwd, "cols": cols, "rows": rows, "spawn": spawn });
+  // Хост мог выйти ровно в момент подключения (см. ptyhost::run) — вторая попытка запустит новый
+  let Some((mut stream, opened)) = handshake(&open).or_else(|_| handshake(&open))? else {
+    return Ok(false);
+  };
+  let writer = stream.try_clone().map_err(|e| e.to_string())?;
+  app.state::<Ptys>().0.lock().unwrap().insert(key.clone(), writer);
+  on_data.send(InvokeResponseBody::Raw(opened)).map_err(|e| e.to_string())?;
 
-  let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-  let mut cmd = CommandBuilder::new(shell);
-  cmd.arg("-l");
-  if let Some(dir) = cwd.or_else(|| std::env::var("HOME").ok()) {
-    cmd.cwd(dir);
-  }
-  cmd.env("TERM", "xterm-256color");
-  cmd.env("COLORTERM", "truecolor");
-  // Хуки агентов ссылаются на $DIOGEN_DIR/status.sh и claude-hooks.json
-  cmd.env("DIOGEN_DIR", crate::hooks::dir());
-  // У приложения, запущенного из Finder, LANG пустой — без него ломается UTF-8 в shell
-  if std::env::var("LANG").is_err() {
-    cmd.env("LANG", "en_US.UTF-8");
-  }
-
-  let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
-  drop(pair.slave);
-
-  let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-  let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
-  let killer = child.clone_killer();
-
-  let id = state.next_id.fetch_add(1, Ordering::Relaxed);
-  state.sessions.lock().unwrap().insert(id, Session { master: pair.master, writer, killer });
-
-  // ponytail: шлём каждый read как есть; батчинг (~16 мс) — если xterm захлебнётся на флуде агентов
   std::thread::spawn(move || {
-    let mut buf = [0u8; 16 * 1024];
-    loop {
-      match reader.read(&mut buf) {
-        Ok(0) | Err(_) => break,
-        Ok(n) => {
-          if on_data.send(InvokeResponseBody::Raw(buf[..n].to_vec())).is_err() {
+    // Обрыв без кадра выхода — хост упал: для вкладки это тоже конец
+    let mut code = 1;
+    while let Ok((kind, payload)) = read_frame(&mut stream) {
+      match (kind, payload.as_slice()) {
+        (b'o', _) => {
+          if on_data.send(InvokeResponseBody::Raw(payload)).is_err() {
             break;
           }
         }
+        (b'x', &[a, b, c, d]) => {
+          code = u32::from_be_bytes([a, b, c, d]);
+          break;
+        }
+        _ => {}
       }
     }
-    let code = child.wait().map(|s| s.exit_code()).unwrap_or(1);
-    app.state::<Ptys>().sessions.lock().unwrap().remove(&id);
+    app.state::<Ptys>().0.lock().unwrap().remove(&key);
     let _ = on_exit.send(code);
   });
+  Ok(true)
+}
 
-  Ok(id)
+fn send(state: &Ptys, key: &str, kind: u8, payload: &[u8]) -> Result<(), String> {
+  let mut streams = state.0.lock().unwrap();
+  let stream = streams.get_mut(key).ok_or("pty not found")?;
+  write_frame(stream, kind, payload).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn pty_write(state: State<'_, Ptys>, id: u32, data: String) -> Result<(), String> {
-  let mut sessions = state.sessions.lock().unwrap();
-  let session = sessions.get_mut(&id).ok_or("pty not found")?;
-  session.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())
+pub fn pty_write(state: State<'_, Ptys>, key: String, data: String) -> Result<(), String> {
+  send(&state, &key, b'd', data.as_bytes())
 }
 
 #[tauri::command]
-pub fn pty_resize(state: State<'_, Ptys>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-  let sessions = state.sessions.lock().unwrap();
-  let session = sessions.get(&id).ok_or("pty not found")?;
-  session.master.resize(size(cols, rows)).map_err(|e| e.to_string())
+pub fn pty_resize(state: State<'_, Ptys>, key: String, cols: u16, rows: u16) -> Result<(), String> {
+  send(&state, &key, b'r', &size_bytes(cols, rows))
 }
 
+/// Закрытие вкладки — агент завершается; закрытие приложения — нет: сессии остаются в хосте
 #[tauri::command]
-pub fn pty_kill(state: State<'_, Ptys>, id: u32) {
-  if let Some(mut session) = state.sessions.lock().unwrap().remove(&id) {
-    let _ = session.killer.kill();
-  }
+pub fn pty_kill(state: State<'_, Ptys>, key: String) {
+  let _ = send(&state, &key, b'k', &[]);
 }

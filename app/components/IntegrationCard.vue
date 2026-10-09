@@ -9,7 +9,7 @@ const current = computed(() => stored.value[props.def.id])
 const isOn = computed(() => configured.value.some(i => i.id === props.def.id))
 
 const url = ref('')
-// Токен вводится и сразу уходит в Keychain; сохранённый в форму не возвращается
+// Токен вводится и сразу уходит в credentials.json; сохранённый в форму не возвращается
 const token = ref('')
 const values = ref<Record<string, string>>({})
 watch(current, (c) => {
@@ -84,7 +84,7 @@ async function onRemove() {
               v-model="token"
               type="password"
               autocomplete="off"
-              :placeholder="current?.hasToken ? 'Сохранён в Keychain — оставьте пустым, чтобы не менять' : 'Вставьте токен'"
+              :placeholder="current?.hasToken ? 'Сохранён — оставьте пустым, чтобы не менять' : 'Вставьте токен'"
               :aria-invalid="!!error || undefined"
             />
             <FieldDescription>{{ def.tokenHint }}</FieldDescription>

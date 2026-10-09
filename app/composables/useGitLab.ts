@@ -11,7 +11,7 @@ export interface MergeRequest {
   target: string
   project: string
   updated: string
-  pipeline?: { status: string, url: string }
+  pipeline?: { id: number, status: string, url: string }
 }
 
 function toMR(raw: any): MergeRequest {
@@ -25,7 +25,7 @@ function toMR(raw: any): MergeRequest {
     target: raw.target_branch,
     project: raw.references?.full?.replace(/!\d+$/, '') ?? '',
     updated: raw.updated_at,
-    pipeline: raw.head_pipeline && { status: raw.head_pipeline.status, url: raw.head_pipeline.web_url },
+    pipeline: raw.head_pipeline && { id: raw.head_pipeline.id, status: raw.head_pipeline.status, url: raw.head_pipeline.web_url },
   }
 }
 
@@ -52,9 +52,10 @@ export function useGitLab() {
     return remote && url ? gitlabProject(remote, url) : undefined
   }
 
-  // Открытый MR из ветки — с пайплайном (его отдаёт только запрос одного MR)
+  // Открытый, а если его нет — влитый MR из ветки; с пайплайном (его отдаёт только запрос одного MR)
   async function mrFor(project: string, branch: string) {
-    const [found] = await gl<any[]>(`/projects/${enc(project)}/merge_requests?state=opened&source_branch=${enc(branch)}`)
+    const list = await gl<any[]>(`/projects/${enc(project)}/merge_requests?source_branch=${enc(branch)}`)
+    const found = list.find(m => m.state === 'opened') ?? list.find(m => m.state === 'merged')
     return found && toMR(await gl(`/projects/${enc(project)}/merge_requests/${found.iid}`))
   }
 
@@ -68,6 +69,14 @@ export function useGitLab() {
       description: mr.description,
       remove_source_branch: true,
     }))
+
+  // Хвосты логов упавших job'ов пайплайна — для агента
+  async function failedJobLogs(project: string, pipeline: number) {
+    const jobs = await gl<any[]>(`/projects/${enc(project)}/pipelines/${pipeline}/jobs?scope[]=failed`)
+    const logs = await Promise.all(jobs.map(async job =>
+      `## ${job.stage} / ${job.name}\n${job.web_url}\n\n\`\`\`\n${jobLogTail(await gl<string>(`/projects/${enc(project)}/jobs/${job.id}/trace`))}\n\`\`\``))
+    return logs.join('\n\n')
+  }
 
   // created — мои MR, review — где я ревьюер
   async function myMRs(kind: 'created' | 'review') {
@@ -106,5 +115,5 @@ export function useGitLab() {
     return addPath(path)
   }
 
-  return { projectFor, mrFor, defaultBranch, createMR, myMRs, projects, cloneDir, clonePath, pickCloneDir, clone }
+  return { projectFor, mrFor, defaultBranch, createMR, failedJobLogs, myMRs, projects, cloneDir, clonePath, pickCloneDir, clone }
 }

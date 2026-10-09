@@ -2,5 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  diogen_lib::run();
+  if !diogen_lib::pty_host() {
+    diogen_lib::run();
+  }
 }

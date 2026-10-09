@@ -13,7 +13,7 @@
 | Git | `git` CLI из Rust | Твои конфиги/хуки работают, `git worktree list --porcelain` — источник правды |
 | Diff | `@codemirror/merge` | Легче Monaco |
 | HTTP к API | `@tauri-apps/plugin-http` | Обходит CORS self-hosted GitLab/YouTrack |
-| Секреты | `keyring` crate (macOS Keychain) | 2 команды get/set |
+| Секреты | `~/.diogen/credentials.json` (права 0600) | Без запросов пароля Keychain |
 | Состояние | `tauri-plugin-store` (JSON) | SQLite не нужен на старте |
 
 ## Архитектура
@@ -47,7 +47,7 @@ Nuxt SPA ──invoke/Channel──► Rust core
 
 - Флуд вывода агентов → батчить PTY-вывод в Rust (~16 мс).
 - ACL Tauri 2: каждый плагин/команду явно разрешать в `capabilities/default.json`, иначе тихие отказы.
-- Агенты умирают при закрытии ADE → позже запуск внутри `tmux`.
+- ✅ Агенты умирали при закрытии ADE → PTY держит отдельный хост терминалов (`ptyhost.rs`), вкладки переподключаются после перезапуска.
 
 ## Вне MVP
 

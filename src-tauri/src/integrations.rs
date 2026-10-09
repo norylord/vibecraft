@@ -1,12 +1,15 @@
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 
-use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Адрес и токен интеграции лежат одной записью в Keychain: токен не попадает во webview
+/// Адрес и токен интеграции лежат одной записью в ~/.diogen/credentials.json: токен не попадает во webview
 /// и не может уйти на другой адрес — запросы к API делает только api_request
 #[derive(Serialize, Deserialize, Clone)]
 struct Stored {
@@ -21,24 +24,40 @@ pub struct Integration {
   has_token: bool,
 }
 
-fn entry(id: &str) -> Result<Entry, String> {
-  Entry::new("studio.lince.diogen", id).map_err(|e| e.to_string())
+fn file() -> PathBuf {
+  crate::hooks::dir().join("credentials.json")
 }
 
-/// Keychain читаем один раз за запуск: каждое обращение может стоить запроса пароля macOS
-static CACHE: LazyLock<Mutex<HashMap<String, Option<Stored>>>> = LazyLock::new(Default::default);
+static WRITE: Mutex<()> = Mutex::new(());
+
+fn read() -> BTreeMap<String, Stored> {
+  fs::read_to_string(file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
 
 fn load(id: &str) -> Option<Stored> {
-  if let Some(cached) = CACHE.lock().unwrap().get(id) {
-    return cached.clone();
-  }
-  let stored = entry(id).ok().and_then(|e| e.get_password().ok()).and_then(|json| serde_json::from_str(&json).ok());
-  remember(id, stored.clone());
-  stored
+  read().remove(id)
 }
 
-fn remember(id: &str, stored: Option<Stored>) {
-  CACHE.lock().unwrap().insert(id.to_owned(), stored);
+/// None — удалить. Запись атомарная через временный файл, права 0600 — читает только владелец
+fn store(id: &str, stored: Option<Stored>) -> Result<(), String> {
+  let _guard = WRITE.lock().unwrap();
+  let mut all = read();
+  match stored {
+    Some(s) => all.insert(id.to_owned(), s),
+    None => all.remove(id),
+  };
+  let json = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
+  fs::create_dir_all(crate::hooks::dir()).map_err(|e| e.to_string())?;
+  let tmp = file().with_extension("json.tmp");
+  fs::OpenOptions::new()
+    .write(true)
+    .create(true)
+    .truncate(true)
+    .mode(0o600)
+    .open(&tmp)
+    .and_then(|mut f| f.write_all(json.as_bytes()))
+    .map_err(|e| e.to_string())?;
+  fs::rename(tmp, file()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -51,22 +70,12 @@ pub async fn integration_get(id: String) -> Option<Integration> {
 pub async fn integration_save(id: String, url: String, token: Option<String>) -> Result<(), String> {
   let token = token.or_else(|| load(&id).map(|s| s.token)).unwrap_or_default();
   let url = url.trim().trim_end_matches('/').to_owned();
-  let stored = Stored { url, token: token.trim().to_owned() };
-  let json = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
-  entry(&id)?.set_password(&json).map_err(|e| e.to_string())?;
-  remember(&id, Some(stored));
-  Ok(())
+  store(&id, Some(Stored { url, token: token.trim().to_owned() }))
 }
 
 #[tauri::command]
 pub async fn integration_delete(id: String) -> Result<(), String> {
-  match entry(&id)?.delete_credential() {
-    Ok(()) | Err(keyring::Error::NoEntry) => {
-      remember(&id, None);
-      Ok(())
-    }
-    Err(e) => Err(e.to_string()),
-  }
+  store(&id, None)
 }
 
 /// JSON-запрос к API интеграции; path — от корня сервиса, например `/api/v4/user`.
@@ -92,5 +101,32 @@ pub async fn api_request(id: String, path: String, method: Option<String>, body:
   if text.trim().is_empty() {
     return Ok(Value::Null);
   }
-  serde_json::from_str(&text).map_err(|e| e.to_string())
+  // Не JSON (лог job'а GitLab) — отдаём текстом
+  Ok(serde_json::from_str(&text).unwrap_or(Value::String(text)))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn credentials_roundtrip_with_private_file() {
+    use std::os::unix::fs::PermissionsExt;
+    use tauri::async_runtime::block_on;
+    let home = std::env::temp_dir().join(format!("diogen-creds-{}", std::process::id()));
+    // HOME больше никто из тестов не читает
+    unsafe { std::env::set_var("HOME", &home) };
+
+    block_on(integration_save("youtrack".into(), " https://yt.example/ ".into(), Some(" t1 ".into()))).unwrap();
+    block_on(integration_save("gitlab".into(), "https://gl.example".into(), Some("t2".into()))).unwrap();
+    block_on(integration_save("youtrack".into(), "https://yt2.example".into(), None)).unwrap();
+    let yt = load("youtrack").unwrap();
+    assert_eq!((yt.url.as_str(), yt.token.as_str()), ("https://yt2.example", "t1"), "без токена — сохранённый остаётся");
+    assert_eq!(fs::metadata(file()).unwrap().permissions().mode() & 0o777, 0o600);
+
+    block_on(integration_delete("youtrack".into())).unwrap();
+    assert!(load("youtrack").is_none());
+    assert_eq!(load("gitlab").unwrap().token, "t2", "удаление не трогает другие интеграции");
+    fs::remove_dir_all(&home).ok();
+  }
 }

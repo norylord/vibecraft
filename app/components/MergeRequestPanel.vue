@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import type { MergeRequest } from '@/composables/useGitLab'
-import { CircleCheckIcon, CircleDashedIcon, CircleXIcon, ExternalLinkIcon, GitMergeIcon, RefreshCwIcon } from '@lucide/vue'
+import { CircleCheckIcon, CircleDashedIcon, CircleXIcon, ExternalLinkIcon, GitMergeIcon, RefreshCwIcon, WrenchIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useEventListener, useIntervalFn } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 
 const { active } = useProjects()
-const { configured, stored } = useIntegrations()
-const { statusIn } = useTerminals()
-const { projectFor, mrFor, defaultBranch, createMR } = useGitLab()
-const { links, issue: fetchIssue, comment, issueUrl } = useYouTrack()
+const { configured, stored, option } = useIntegrations()
+const { statusIn, sendToAgent } = useTerminals()
+const { projectFor, mrFor, defaultBranch, createMR, failedJobLogs } = useGitLab()
+const { links, issue: fetchIssue, comment, setState, issueUrl } = useYouTrack()
 const { openSettings } = useSettings()
 
 const hasGitLab = computed(() => configured.value.some(i => i.id === 'gitlab'))
@@ -18,6 +18,8 @@ const issueId = computed(() => active.value && hasYouTrack.value ? links.value[a
 
 const project = ref<string>()
 const mr = ref<MergeRequest>()
+// Задачи, уже переведённые после слияния: повторно не трогаем, даже если статус потом сменили руками
+const movedOnMerge = persisted<string[]>('merged-issues', [])
 const loading = ref(false)
 const error = ref<string>()
 
@@ -50,6 +52,11 @@ async function load() {
     mr.value = found
     error.value = undefined
     if (p && !found && prefilledFor !== wt.path) await prefill(wt.path, p)
+    const id = issueId.value
+    if (found?.state === 'merged' && id && option('youtrack', 'doneState') && !movedOnMerge.value.includes(id)) {
+      movedOnMerge.value.push(id)
+      await moveIssue(id, 'doneState')
+    }
   }
   catch (e) {
     error.value = String(e)
@@ -79,6 +86,46 @@ const PIPELINE_LABEL: Record<string, string> = {
   manual: 'Ждёт ручного запуска',
 }
 
+// Статус задачи из настроек YouTrack; пустой — не меняем
+async function moveIssue(id: string, key: 'reviewState' | 'doneState') {
+  const state = option('youtrack', key)
+  if (!state) return
+  try {
+    const issue = await fetchIssue(id)
+    if (!issue.stateField || issue.state === state) return
+    await setState(issue, state)
+    toast.success(`${id} → ${state}`)
+  }
+  catch (e) {
+    toast.error(`Статус ${id} не изменён: ${e}`)
+  }
+}
+
+const fixing = ref(false)
+// Логи упавших job'ов — агенту этого worktree: пусть разберётся и починит
+async function fixPipeline() {
+  const wt = active.value?.wt
+  const current = mr.value
+  if (!wt || !current?.pipeline || !project.value) return
+  fixing.value = true
+  try {
+    const logs = await failedJobLogs(project.value, current.pipeline.id)
+    const text = [
+      `Пайплайн MR !${current.iid} упал: ${current.pipeline.url}`,
+      logs || 'Упавших job\'ов в пайплайне не нашлось — посмотри его по ссылке.',
+      'Разберись в причине и почини.',
+    ].join('\n\n')
+    if (!await sendToAgent(wt.path, `pipeline-${current.iid}`, text))
+      toast.error('Нет агента, который принимает промпт: добавьте Claude Code или Codex в настройках')
+  }
+  catch (e) {
+    toast.error(String(e))
+  }
+  finally {
+    fixing.value = false
+  }
+}
+
 async function create() {
   const wt = active.value?.wt
   if (!wt?.branch || !project.value) return
@@ -96,7 +143,10 @@ async function create() {
     })
     mr.value = created
     toast.success(`MR !${created.iid} создан`)
-    if (id) await comment(id, `Merge request: ${created.url}`).catch(e => toast.error(`Комментарий в YouTrack не добавлен: ${e}`))
+    if (id) {
+      await comment(id, `Merge request: ${created.url}`).catch(e => toast.error(`Комментарий в YouTrack не добавлен: ${e}`))
+      await moveIssue(id, 'reviewState')
+    }
   }
   catch (e) {
     toast.error(String(e))
@@ -147,6 +197,7 @@ async function create() {
     <div v-else-if="mr" class="flex flex-col gap-3">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <span class="font-mono">!{{ mr.iid }}</span>
+        <Badge v-if="mr.state === 'merged'" variant="secondary">Влит</Badge>
         <Badge v-if="mr.draft" variant="outline">Draft</Badge>
         <span class="ml-auto">{{ ago(mr.updated) }}</span>
       </div>
@@ -161,6 +212,11 @@ async function create() {
         <CircleDashedIcon v-else data-icon="inline-start" />
         {{ PIPELINE_LABEL[mr.pipeline.status] ?? 'Пайплайн идёт' }}
       </Button>
+      <Button v-if="mr.state === 'opened' && mr.pipeline?.status === 'failed'" variant="outline" :disabled="fixing" @click="fixPipeline">
+        <Spinner v-if="fixing" data-icon="inline-start" />
+        <WrenchIcon v-else data-icon="inline-start" />
+        Отправить лог агенту
+      </Button>
       <Button variant="outline" @click="openExternal(mr.url)">
         <ExternalLinkIcon data-icon="inline-start" />
         Открыть в GitLab
@@ -172,7 +228,9 @@ async function create() {
         <Field>
           <FieldLabel for="mr-title">Заголовок</FieldLabel>
           <Input id="mr-title" v-model="title" />
-          <FieldDescription v-if="issueId">Из задачи {{ issueId }}; в задачу уйдёт комментарий со ссылкой на MR</FieldDescription>
+          <FieldDescription v-if="issueId">
+            Из задачи {{ issueId }}; в задачу уйдёт комментарий со ссылкой на MR{{ option('youtrack', 'reviewState') && `, статус — ${option('youtrack', 'reviewState')}` }}
+          </FieldDescription>
         </Field>
         <Field>
           <FieldLabel for="mr-target">Целевая ветка</FieldLabel>

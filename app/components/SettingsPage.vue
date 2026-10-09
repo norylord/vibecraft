@@ -11,7 +11,7 @@ const SECTIONS: { id: SettingsTab, label: string, icon: Component, description: 
   { id: 'appearance', label: 'Внешний вид', icon: PaletteIcon, description: 'Тема, масштаб, шрифт терминала' },
   { id: 'hotkeys', label: 'Горячие клавиши', icon: KeyboardIcon, description: 'Сочетания для действий Diogen' },
   { id: 'agents', label: 'Агенты', icon: BotIcon, description: 'CLI-агенты, которых можно запускать в worktree' },
-  { id: 'integrations', label: 'Интеграции', icon: PlugIcon, description: 'Токены хранятся в Keychain macOS и не покидают Rust-часть приложения. Подключённые интеграции появляются ярлыками в сайдбаре' },
+  { id: 'integrations', label: 'Интеграции', icon: PlugIcon, description: 'Токены хранятся в ~/.diogen/credentials.json (доступ только у вашего пользователя) и не покидают Rust-часть приложения. Подключённые интеграции появляются ярлыками в сайдбаре' },
 ]
 const current = computed(() => SECTIONS.find(s => s.id === tab.value)!)
 </script>

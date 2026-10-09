@@ -6,8 +6,10 @@ import { useResizeObserver } from '@vueuse/core'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
+import { toast } from 'vue-sonner'
 
-const props = defineProps<{ cwd?: string, command?: string, tracked?: boolean, workingOnEnter?: boolean, active: boolean }>()
+// tabKey — ключ сессии в хосте терминалов; restored — переподключиться к ней, ничего не запуская
+const props = defineProps<{ tabKey: string, cwd?: string, command?: string, tracked?: boolean, workingOnEnter?: boolean, restored?: boolean, active: boolean }>()
 // idle — агента прервали (Esc), exited — агент вышел, остался shell
 const emit = defineEmits<{ title: [title: string], exit: [code: number], status: [status: AgentStatus | 'idle' | 'exited'] }>()
 
@@ -38,9 +40,15 @@ watch(() => settings.value.terminalFontSize, (size) => {
   fit.fit()
 })
 
-let id: number | undefined
+const key = props.tabKey
+let connected = false
+let opened = false
 let disposed = false
 let agentAlive = !!props.tracked
+// Пока xterm разбирает хвост вывода из прошлого запуска, статусы копим и отдаём только последний:
+// старые «закончил» не должны сыпаться уведомлениями
+let replaying = false
+let replayStatus: AgentStatus | 'exited' | undefined
 
 // Статус от хуков агента: ESC ] 777 ; diogen ; <status> BEL (см. src-tauri/src/hooks.rs).
 // Последовательность невидима — xterm её поглощает
@@ -48,9 +56,62 @@ term.parser.registerOscHandler(777, (data) => {
   if (!data.startsWith('diogen;')) return false
   const status = data.slice('diogen;'.length) as AgentStatus | 'exited'
   if (status === 'exited') agentAlive = false
-  emit('status', status)
+  if (replaying) replayStatus = status
+  else emit('status', status)
   return true
 })
+
+term.onData((data) => {
+  if (!connected) return
+  invoke('pty_write', { key, data })
+  if (!agentAlive) return
+  // Хук Stop при прерывании не срабатывает — иначе статус «работает» завис бы
+  if (data === '\x1B') emit('status', 'idle')
+  else if (props.workingOnEnter && data.includes('\r')) emit('status', 'working')
+})
+term.onResize(({ cols, rows }) => connected && invoke('pty_resize', { key, cols, rows }))
+term.onTitleChange(title => emit('title', title))
+
+// Первое сообщение — размер PTY и хвост вывода сессии (у новой пустой)
+function restore(buf: ArrayBuffer) {
+  const size = new DataView(buf)
+  // Скрытая вкладка ещё не измерена: разбираем вывод в том размере, в каком его рисовал агент
+  if (!opened) term.resize(size.getUint16(0), size.getUint16(2))
+  if (buf.byteLength === 4) return
+  replaying = true
+  term.write(new Uint8Array(buf, 4), () => {
+    replaying = false
+    if (replayStatus) emit('status', replayStatus)
+  })
+}
+
+// cols/rows = 0 — подключиться к сессии, не меняя размер PTY
+async function connect(cols: number, rows: number) {
+  const onData = new Channel<ArrayBuffer>()
+  let first = true
+  onData.onmessage = (buf) => {
+    if (!first) return term.write(new Uint8Array(buf))
+    first = false
+    restore(buf)
+  }
+  const onExit = new Channel<number>()
+  onExit.onmessage = code => emit('exit', code)
+
+  try {
+    // false — сессии уже нет: агент завершился, пока приложение было закрыто
+    if (!await invoke<boolean>('pty_open', { key, cwd: props.cwd, cols, rows, spawn: !props.restored, onData, onExit })) return emit('exit', 0)
+  }
+  catch (e) {
+    toast.error(`Терминал не открылся: ${e}`)
+    return emit('exit', 1)
+  }
+  // Вкладку закрыли, пока shell стартовал
+  if (disposed) return void invoke('pty_kill', { key })
+  connected = true
+  if (opened) invoke('pty_resize', { key, cols: term.cols, rows: term.rows })
+  // Shell прочитает команду из буфера tty после загрузки rc; когда агент выйдет — останется shell
+  if (props.command && !props.restored) invoke('pty_write', { key, data: `${props.command}\r` })
+}
 
 let started = false
 
@@ -69,30 +130,13 @@ async function start() {
     // нет WebGL — остаётся DOM-рендерер
   }
   fit.fit()
-
-  const onData = new Channel<ArrayBuffer>()
-  onData.onmessage = buf => term.write(new Uint8Array(buf))
-  const onExit = new Channel<number>()
-  onExit.onmessage = code => emit('exit', code)
-
-  const ptyId = await invoke<number>('pty_spawn', { cwd: props.cwd, cols: term.cols, rows: term.rows, onData, onExit })
-  // Вкладку закрыли, пока shell стартовал
-  if (disposed) return void invoke('pty_kill', { id: ptyId })
-  id = ptyId
-
-  term.onData((data) => {
-    invoke('pty_write', { id, data })
-    if (!agentAlive) return
-    // Хук Stop при прерывании не срабатывает — иначе статус «работает» завис бы
-    if (data === '\x1B') emit('status', 'idle')
-    else if (props.workingOnEnter && data.includes('\r')) emit('status', 'working')
-  })
-  term.onResize(({ cols, rows }) => invoke('pty_resize', { id, cols, rows }))
-  term.onTitleChange(title => emit('title', title))
-  // Shell прочитает команду из буфера tty после загрузки rc; когда агент выйдет — останется shell
-  if (props.command) invoke('pty_write', { id, data: `${props.command}\r` })
+  opened = true
+  if (!props.restored) await connect(term.cols, term.rows)
   if (props.active) term.focus()
 }
+
+// Восстановленную вкладку подключаем сразу, даже скрытую: статусы её агента нужны в сайдбаре
+onMounted(() => props.restored && connect(0, 0))
 
 useResizeObserver(el, () => {
   // Скрытый контейнер (display: none) имеет нулевой размер: xterm измерил бы символы как 0
@@ -107,7 +151,7 @@ watch(() => props.active, active => active && nextTick(() => term.focus()))
 
 onBeforeUnmount(() => {
   disposed = true
-  if (id !== undefined) invoke('pty_kill', { id })
+  if (connected) invoke('pty_kill', { key })
   term.dispose()
 })
 </script>

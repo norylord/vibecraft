@@ -13,7 +13,7 @@ export interface IntegrationDef {
   // Запрос «кто я» — проверка подключения
   mePath: string
   meName: (me: any) => string
-  // Несекретные параметры — в ~/.diogen/state.json, не в Keychain
+  // Несекретные параметры — в ~/.diogen/state.json, токен — в credentials.json
   options?: { key: string, label: string, default: string, placeholder?: string }[]
 }
 
@@ -26,7 +26,11 @@ export const INTEGRATIONS: IntegrationDef[] = [
     tokenHint: 'Профиль → Account Security → New token',
     mePath: '/api/users/me?fields=login,fullName',
     meName: me => me.fullName || me.login,
-    options: [{ key: 'query', label: 'Запрос для списка задач', default: 'for: me #Unresolved sort by: updated desc' }],
+    options: [
+      { key: 'query', label: 'Запрос для списка задач', default: 'for: me #Unresolved sort by: updated desc' },
+      { key: 'reviewState', label: 'Статус задачи после создания MR', default: '', placeholder: 'Не менять, например In Review' },
+      { key: 'doneState', label: 'Статус задачи после слияния MR', default: '', placeholder: 'Не менять, например Fixed' },
+    ],
   },
   {
     id: 'gitlab',
@@ -40,7 +44,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
   },
 ]
 
-// Токены живут в Keychain на стороне Rust — сюда приходит только адрес и факт наличия токена
+// Токены живут в ~/.diogen/credentials.json на стороне Rust — сюда приходит только адрес и факт наличия токена
 const stored = ref<Partial<Record<IntegrationId, { url: string, hasToken: boolean } | null>>>({})
 const options = persisted<Partial<Record<IntegrationId, Record<string, string>>>>('integration-options', {})
 
