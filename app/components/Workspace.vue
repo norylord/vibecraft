@@ -175,7 +175,8 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                   <span class="sr-only">Новый терминал или агент</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <!-- Без возврата фокуса на «+»: новый терминал фокусируется сам, а меню закрывается позже и перебило бы его -->
+              <DropdownMenuContent align="start" @close-auto-focus.prevent>
                 <DropdownMenuGroup>
                   <DropdownMenuItem @select="openTerminal">
                     <SquareTerminalIcon />
