@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   ssr: false,
   app: {
     head: {
-      title: 'Diogen',
+      title: 'Vibecraft',
       htmlAttrs: { lang: 'ru', class: 'dark' },
     },
   },

@@ -13,7 +13,7 @@ const { settings } = useSettings()
     <Field orientation="horizontal">
       <FieldContent>
         <FieldLabel for="settings-notifications">Системные уведомления</FieldLabel>
-        <FieldDescription>Когда агент ждёт ввода или закончил, а окно Diogen не в фокусе</FieldDescription>
+        <FieldDescription>Когда агент ждёт ввода или закончил, а окно Vibecraft не в фокусе</FieldDescription>
       </FieldContent>
       <Switch id="settings-notifications" v-model="settings.notifications" />
     </Field>

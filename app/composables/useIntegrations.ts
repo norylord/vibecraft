@@ -13,7 +13,7 @@ export interface IntegrationDef {
   // Запрос «кто я» — проверка подключения
   mePath: string
   meName: (me: any) => string
-  // Несекретные параметры — в ~/.diogen/state.json, токен — в credentials.json
+  // Несекретные параметры — в ~/.vibecraft/state.json, токен — в credentials.json
   options?: { key: string, label: string, default: string, placeholder?: string }[]
 }
 
@@ -44,7 +44,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
   },
 ]
 
-// Токены живут в ~/.diogen/credentials.json на стороне Rust — сюда приходит только адрес и факт наличия токена
+// Токены живут в ~/.vibecraft/credentials.json на стороне Rust — сюда приходит только адрес и факт наличия токена
 const stored = ref<Partial<Record<IntegrationId, { url: string, hasToken: boolean } | null>>>({})
 const options = persisted<Partial<Record<IntegrationId, Record<string, string>>>>('integration-options', {})
 

@@ -32,13 +32,13 @@ export const acceptsPrompt = (command: string) => ['claude', 'codex'].includes(a
 function withHooks(command: string, prompt?: string) {
   const p = agentProgram(command)
   const flags = p === 'claude'
-    ? ' --settings "$DIOGEN_DIR/claude-hooks.json"'
+    ? ' --settings "$VIBECRAFT_DIR/claude-hooks.json"'
     : p === 'codex'
-      ? ' -c "notify=[\\"$DIOGEN_DIR/status.sh\\",\\"done\\"]"'
+      ? ' -c "notify=[\\"$VIBECRAFT_DIR/status.sh\\",\\"done\\"]"'
       : undefined
   if (!flags) return { command }
-  const promptArg = prompt ? ` "$(cat "$DIOGEN_DIR/prompts/${prompt}.md")"` : ''
-  return { command: `${command}${flags}${promptArg}; "$DIOGEN_DIR/status.sh" exited`, tracked: true, workingOnEnter: p === 'codex' }
+  const promptArg = prompt ? ` "$(cat "$VIBECRAFT_DIR/prompts/${prompt}.md")"` : ''
+  return { command: `${command}${flags}${promptArg}; "$VIBECRAFT_DIR/status.sh" exited`, tracked: true, workingOnEnter: p === 'codex' }
 }
 
 // Сводный статус worktree для сайдбара: важнее то, что требует внимания

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Diogen",
+  "productName": "Vibecraft",
   "version": "0.1.0",
-  "identifier": "studio.lince.diogen",
+  "identifier": "studio.lince.vibecraft",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Diogen",
+        "title": "Vibecraft",
         "width": 1440,
         "height": 900,
         "minWidth": 960,
@@ -54,7 +54,7 @@
     ],
     "category": "DeveloperTool",
     "macOS": {
-      "signingIdentity": "Diogen Dev",
+      "signingIdentity": "-",
       "minimumSystemVersion": "13.0"
     }
   }

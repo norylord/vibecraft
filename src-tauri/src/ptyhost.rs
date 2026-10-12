@@ -1,5 +1,5 @@
 //! Хост терминалов: тот же бинарник с аргументом `--pty-host`, живёт отдельно от приложения и держит PTY.
-//! Закрыли или обновили Diogen — агенты работают дальше; новое окно переподключается к ним по ключу
+//! Закрыли или обновили Vibecraft — агенты работают дальше; новое окно переподключается к ним по ключу
 //! вкладки и получает хвост вывода, из которого xterm восстанавливает экран.
 //!
 //! Протокол по unix-сокету — кадры `[тип u8][длина u32 BE][данные]`.
@@ -23,7 +23,7 @@ pub const ARG: &str = "--pty-host";
 // Хвоста хватает, чтобы xterm восстановил экран агента и последние экраны истории
 const REPLAY: usize = 2 << 20;
 
-/// dev-сборка — свой хост: иначе `tauri dev` перехватил бы агентов работающего Diogen.app
+/// dev-сборка — свой хост: иначе `tauri dev` перехватил бы агентов работающего Vibecraft.app
 pub fn socket() -> PathBuf {
   crate::hooks::dir().join(if cfg!(debug_assertions) { "pty-dev.sock" } else { "pty.sock" })
 }
@@ -95,8 +95,8 @@ fn spawn(open: &Open, sessions: Sessions) -> io::Result<Arc<Session>> {
   }
   cmd.env("TERM", "xterm-256color");
   cmd.env("COLORTERM", "truecolor");
-  // Хуки агентов ссылаются на $DIOGEN_DIR/status.sh и claude-hooks.json
-  cmd.env("DIOGEN_DIR", crate::hooks::dir());
+  // Хуки агентов ссылаются на $VIBECRAFT_DIR/status.sh и claude-hooks.json
+  cmd.env("VIBECRAFT_DIR", crate::hooks::dir());
   // У приложения, запущенного из Finder, LANG пустой — без него ломается UTF-8 в shell
   if std::env::var("LANG").is_err() {
     cmd.env("LANG", "en_US.UTF-8");
@@ -251,7 +251,7 @@ mod tests {
 
   #[test]
   fn session_survives_reconnect_and_ends_on_kill() {
-    let path = std::env::temp_dir().join(format!("diogen-pty-{}.sock", std::process::id()));
+    let path = std::env::temp_dir().join(format!("vibecraft-pty-{}.sock", std::process::id()));
     let _ = fs::remove_file(&path);
     let listener = UnixListener::bind(&path).unwrap();
     std::thread::spawn(move || accept(listener, Default::default(), Default::default()));
@@ -259,13 +259,13 @@ mod tests {
     let (mut s, kind, opened) = open(&path, true);
     assert_eq!((kind, &opened[..4]), (b'p', &size_bytes(100, 30)[..]));
     // Ответ вычисляет shell — так в выводе он не совпадёт с эхом набранной команды
-    write_frame(&mut s, b'd', b"echo diogen-$((40+2))\r").unwrap();
-    wait_for(&mut s, "diogen-42");
+    write_frame(&mut s, b'd', b"echo vibecraft-$((40+2))\r").unwrap();
+    wait_for(&mut s, "vibecraft-42");
     drop(s);
 
     let (mut s, kind, opened) = open(&path, false);
     assert_eq!(kind, b'p');
-    assert!(String::from_utf8_lossy(&opened[4..]).contains("diogen-42"), "хвост вывода восстанавливается");
+    assert!(String::from_utf8_lossy(&opened[4..]).contains("vibecraft-42"), "хвост вывода восстанавливается");
     write_frame(&mut s, b'k', &[]).unwrap();
     loop {
       match read_frame(&mut s).unwrap() {

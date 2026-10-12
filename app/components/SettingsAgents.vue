@@ -16,7 +16,7 @@ watch(agents, async (list) => {
     <p class="text-xs text-muted-foreground">
       Команда печатается в shell worktree — флаги и переменные пишутся прямо в ней:
       <code class="font-mono">FOO=1 claude --model opus</code>.
-      Для claude и codex Diogen сам добавит хуки статусов.
+      Для claude и codex Vibecraft сам добавит хуки статусов.
     </p>
     <FieldGroup class="gap-3">
       <div v-for="(agent, i) in agents" :key="i" class="flex items-end gap-2">

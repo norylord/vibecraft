@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Адрес и токен интеграции лежат одной записью в ~/.diogen/credentials.json: токен не попадает во webview
+/// Адрес и токен интеграции лежат одной записью в ~/.vibecraft/credentials.json: токен не попадает во webview
 /// и не может уйти на другой адрес — запросы к API делает только api_request
 #[derive(Serialize, Deserialize, Clone)]
 struct Stored {
@@ -113,7 +113,7 @@ mod tests {
   fn credentials_roundtrip_with_private_file() {
     use std::os::unix::fs::PermissionsExt;
     use tauri::async_runtime::block_on;
-    let home = std::env::temp_dir().join(format!("diogen-creds-{}", std::process::id()));
+    let home = std::env::temp_dir().join(format!("vibecraft-creds-{}", std::process::id()));
     // HOME больше никто из тестов не читает
     unsafe { std::env::set_var("HOME", &home) };
 

@@ -18,7 +18,7 @@ const filteredRepos = computed(() => {
   const q = search.value.trim().toLowerCase()
   return q ? repos.value.filter(r => `${r.path} ${r.description}`.toLowerCase().includes(q)) : repos.value
 })
-// Уже склонирован в папку клонирования и добавлен в Diogen
+// Уже склонирован в папку клонирования и добавлен в Vibecraft
 const isLocal = (r: GitLabProject) => localProjects.value.includes(clonePath(r) || '')
 
 async function load() {

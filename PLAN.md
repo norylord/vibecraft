@@ -1,4 +1,4 @@
-# Diogen ADE — план
+# Vibecraft ADE — план
 
 Десктопный оркестратор CLI-агентов (Claude Code / Codex / Gemini): задача → изолированный git worktree → PTY с агентом → diff → MR в GitLab ↔ задача в YouTrack.
 
@@ -13,7 +13,7 @@
 | Git | `git` CLI из Rust | Твои конфиги/хуки работают, `git worktree list --porcelain` — источник правды |
 | Diff | `@codemirror/merge` | Легче Monaco |
 | HTTP к API | `@tauri-apps/plugin-http` | Обходит CORS self-hosted GitLab/YouTrack |
-| Секреты | `~/.diogen/credentials.json` (права 0600) | Без запросов пароля Keychain |
+| Секреты | `~/.vibecraft/credentials.json` (права 0600) | Без запросов пароля Keychain |
 | Состояние | `tauri-plugin-store` (JSON) | SQLite не нужен на старте |
 
 ## Архитектура
@@ -27,7 +27,7 @@ Nuxt SPA ──invoke/Channel──► Rust core
    useYouTrack, useGitLab
 ```
 
-**Статус агента** (работает / ждёт ввода / завершил): в env PTY передаём `DIOGEN_PORT` + `DIOGEN_PANE`; хуки Claude Code (`Stop`, `Notification`) → `curl` на `127.0.0.1:$DIOGEN_PORT`. Codex — `notify`. Фолбэк для прочих — тишина в PTY N секунд.
+**Статус агента** (работает / ждёт ввода / завершил): в env PTY передаём `VIBECRAFT_PORT` + `VIBECRAFT_PANE`; хуки Claude Code (`Stop`, `Notification`) → `curl` на `127.0.0.1:$VIBECRAFT_PORT`. Codex — `notify`. Фолбэк для прочих — тишина в PTY N секунд.
 
 ## Интеграции
 
@@ -41,7 +41,7 @@ Nuxt SPA ──invoke/Channel──► Rust core
 2. ✅ **Ядро (нед. 1)** — PTY ↔ xterm, CRUD worktree, пресеты агентов (команда + args + env), запуск агента в worktree, персист проектов.
 3. ✅ **Контроль (нед. 2)** — статусы через хуки, системные уведомления (`tauri-plugin-notification`), diff-view, commit/push, «Открыть в WebStorm».
 4. ✅ **Интеграции (нед. 3)** — страница настроек + ярлыки, YouTrack → worktree+агент, GitLab MR/пайплайны и клонирование. ⏸ MCP-пресеты (Figma) — отложено.
-5. ✅ **Полировка (нед. 4)** — сборка `.app`/`.dmg` (иконка, подпись «Diogen Dev», PATH из login-shell, состояние в `~/.diogen/state.json`), онбординг первого запуска, анимации.
+5. ✅ **Полировка (нед. 4)** — сборка `.app`/`.dmg` (иконка, ad-hoc подпись, PATH из login-shell, состояние в `~/.vibecraft/state.json`), онбординг первого запуска, анимации.
 
 ## Риски
 

@@ -5,16 +5,16 @@ use std::path::PathBuf;
 /// Статус агента доезжает до вкладки невидимой OSC-последовательностью в его терминале —
 /// xterm её перехватывает. Ни сервера, ни портов, ни id панелей.
 const STATUS_SH: &str = r#"#!/bin/sh
-# Diogen: статус агента ($1 = working|waiting|done|exited) для вкладки, где он запущен
+# Vibecraft: статус агента ($1 = working|waiting|done|exited) для вкладки, где он запущен
 if [ -t 1 ]; then
   # Вызов из shell после выхода агента: stdout и есть терминал
-  printf '\033]777;diogen;%s\007' "$1"
+  printf '\033]777;vibecraft;%s\007' "$1"
 else
   # Хук Claude Code: у хуков нет /dev/tty, последовательность выводит сам Claude из terminalSequence.
   # Строго одна строка JSON — иначе UserPromptSubmit добавит вывод в контекст модели
-  printf '{"terminalSequence":"\\u001b]777;diogen;%s\\u0007"}\n' "$1"
+  printf '{"terminalSequence":"\\u001b]777;vibecraft;%s\\u0007"}\n' "$1"
   # notify Codex: stdout в /dev/null, а управляющий терминал доступен
-  { printf '\033]777;diogen;%s\007' "$1" > /dev/tty; } 2>/dev/null
+  { printf '\033]777;vibecraft;%s\007' "$1" > /dev/tty; } 2>/dev/null
 fi
 exit 0
 "#;
@@ -23,17 +23,17 @@ exit 0
 /// Notification только про ожидание: idle_prompt через минуту после Stop дублировал бы «закончил»
 const CLAUDE_HOOKS: &str = r#"{
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"$DIOGEN_DIR/status.sh\" working" }] }],
-    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "\"$DIOGEN_DIR/status.sh\" working" }] }],
-    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "\"$DIOGEN_DIR/status.sh\" waiting" }] }],
-    "Notification": [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "\"$DIOGEN_DIR/status.sh\" waiting" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "\"$DIOGEN_DIR/status.sh\" done" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"$VIBECRAFT_DIR/status.sh\" working" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "\"$VIBECRAFT_DIR/status.sh\" working" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "\"$VIBECRAFT_DIR/status.sh\" waiting" }] }],
+    "Notification": [{ "matcher": "permission_prompt|elicitation_dialog", "hooks": [{ "type": "command", "command": "\"$VIBECRAFT_DIR/status.sh\" waiting" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"$VIBECRAFT_DIR/status.sh\" done" }] }]
   }
 }
 "#;
 
 pub fn dir() -> PathBuf {
-  PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".diogen")
+  PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".vibecraft")
 }
 
 /// Перезаписываем при каждом старте: файлы всегда соответствуют версии приложения
@@ -46,7 +46,7 @@ pub fn install() -> std::io::Result<()> {
   fs::write(dir.join("claude-hooks.json"), CLAUDE_HOOKS)
 }
 
-/// Промпт для агента: файл в ~/.diogen/prompts, агент получает его через "$(cat ...)" — без экранирования в shell
+/// Промпт для агента: файл в ~/.vibecraft/prompts, агент получает его через "$(cat ...)" — без экранирования в shell
 #[tauri::command]
 pub async fn save_prompt(name: String, text: String) -> Result<(), String> {
   if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {

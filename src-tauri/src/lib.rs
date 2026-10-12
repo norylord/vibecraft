@@ -27,7 +27,7 @@ async fn installed(programs: Vec<String>) -> Vec<bool> {
   programs.iter().map(|p| std::env::split_paths(path).any(|dir| dir.join(p).is_file())).collect()
 }
 
-/// Запуск в роли хоста терминалов (`diogen --pty-host`) вместо окна приложения
+/// Запуск в роли хоста терминалов (`vibecraft --pty-host`) вместо окна приложения
 pub fn pty_host() -> bool {
   if std::env::args().nth(1).as_deref() != Some(ptyhost::ARG) {
     return false;

@@ -100,7 +100,7 @@ async function drop(state: string) {
       </template>
     </AppHeader>
 
-    <ResizablePanelGroup direction="horizontal" auto-save-id="diogen-youtrack" class="min-h-0 flex-1">
+    <ResizablePanelGroup direction="horizontal" auto-save-id="vibecraft-youtrack" class="min-h-0 flex-1">
       <ResizablePanel :min-size="30" :default-size="55">
         <div class="flex h-full flex-col">
           <div class="p-2">

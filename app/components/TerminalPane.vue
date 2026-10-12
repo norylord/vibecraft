@@ -50,11 +50,11 @@ let agentAlive = !!props.tracked
 let replaying = false
 let replayStatus: AgentStatus | 'exited' | undefined
 
-// Статус от хуков агента: ESC ] 777 ; diogen ; <status> BEL (см. src-tauri/src/hooks.rs).
+// Статус от хуков агента: ESC ] 777 ; vibecraft ; <status> BEL (см. src-tauri/src/hooks.rs).
 // Последовательность невидима — xterm её поглощает
 term.parser.registerOscHandler(777, (data) => {
-  if (!data.startsWith('diogen;')) return false
-  const status = data.slice('diogen;'.length) as AgentStatus | 'exited'
+  if (!data.startsWith('vibecraft;')) return false
+  const status = data.slice('vibecraft;'.length) as AgentStatus | 'exited'
   if (status === 'exited') agentAlive = false
   if (replaying) replayStatus = status
   else emit('status', status)

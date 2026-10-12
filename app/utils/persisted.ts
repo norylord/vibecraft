@@ -1,7 +1,7 @@
 import type { Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 
-// Состояние в ~/.diogen/state.json (Rust state_load/state_save): общее для dev-сборки и .app,
+// Состояние в ~/.vibecraft/state.json (Rust state_load/state_save): общее для dev-сборки и .app,
 // у которых localStorage разный. Плагин persisted загружает файл до монтирования приложения
 const refs = new Map<string, Ref<unknown>>()
 let state: Record<string, unknown> | undefined
@@ -9,10 +9,8 @@ let state: Record<string, unknown> | undefined
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 
 function hydrate(key: string, value: Ref<unknown>) {
-  // Данные, сохранённые до переезда из localStorage, переносим один раз
-  const legacy = localStorage.getItem(`diogen:${key}`)
   const known = key in state!
-  const stored = known ? state![key] : legacy ? JSON.parse(legacy) : undefined
+  const stored = state![key]
   // Объект дополняем значениями по умолчанию: новые поля настроек появятся и у старых файлов
   if (stored !== undefined) value.value = isObject(value.value) && isObject(stored) ? { ...value.value, ...stored } : stored
   watch(value, v => invoke('state_save', { key, value: v }), { deep: true, immediate: !known })

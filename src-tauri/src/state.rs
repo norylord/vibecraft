@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use serde_json::{Map, Value};
 
-/// Состояние интерфейса (проекты, агенты, настройки) — файл в ~/.diogen, общий для dev-сборки и .app:
+/// Состояние интерфейса (проекты, агенты, настройки) — файл в ~/.vibecraft, общий для dev-сборки и .app:
 /// localStorage у них разный (http://localhost:1420 против tauri://localhost)
 fn file() -> PathBuf {
   crate::hooks::dir().join("state.json")

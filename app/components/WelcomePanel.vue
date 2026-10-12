@@ -48,7 +48,7 @@ const steps = computed(() => [
       <div class="flex flex-col items-center gap-3 text-center">
         <img :src="logoUrl" alt="" class="size-20 drop-shadow-lg">
         <h1 class="font-heading text-lg font-medium">
-          Добро пожаловать в Diogen
+          Добро пожаловать в Vibecraft
         </h1>
         <p class="text-sm text-muted-foreground">
           Агенты в изолированных worktree, задачи из YouTrack и MR в GitLab — в одном окне

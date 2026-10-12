@@ -16,13 +16,13 @@ pub fn user_path() -> &'static str {
     std::thread::spawn(move || {
       // -i: nvm и т.п. настраивают PATH в .zshrc; маркер отрезает вывод rc-файлов
       let out = Command::new(shell)
-        .args(["-l", "-i", "-c", "printf '__DIOGEN_PATH__%s' \"$PATH\""])
+        .args(["-l", "-i", "-c", "printf '__VIBECRAFT_PATH__%s' \"$PATH\""])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output();
       let path = out.ok().and_then(|o| {
         let text = String::from_utf8_lossy(&o.stdout).into_owned();
-        text.rsplit_once("__DIOGEN_PATH__").map(|(_, p)| p.trim().to_owned())
+        text.rsplit_once("__VIBECRAFT_PATH__").map(|(_, p)| p.trim().to_owned())
       });
       let _ = tx.send(path.filter(|p| !p.is_empty()));
     });
@@ -90,12 +90,12 @@ pub async fn git_worktrees(repo: String) -> Result<Vec<Worktree>, String> {
   Ok(parse_worktrees(&git(&repo, &["worktree", "list", "--porcelain"])?))
 }
 
-/// Новый worktree в ~/.diogen/worktrees/<repo>/<branch>; существующую ветку переиспользует
+/// Новый worktree в ~/.vibecraft/worktrees/<repo>/<branch>; существующую ветку переиспользует
 #[tauri::command]
 pub async fn git_worktree_add(repo: String, branch: String) -> Result<String, String> {
   let home = std::env::var("HOME").map_err(|e| e.to_string())?;
   let repo_name = Path::new(&repo).file_name().and_then(|n| n.to_str()).unwrap_or("repo");
-  let path = format!("{home}/.diogen/worktrees/{repo_name}/{}", branch.replace('/', "-"));
+  let path = format!("{home}/.vibecraft/worktrees/{repo_name}/{}", branch.replace('/', "-"));
 
   let exists = git(&repo, &["show-ref", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
   if exists {
@@ -214,7 +214,7 @@ mod tests {
 
   #[test]
   fn clone_reuses_same_repo_and_rejects_other() {
-    let tmp = std::env::temp_dir().join(format!("diogen-clone-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("vibecraft-clone-{}", std::process::id()));
     std::fs::create_dir_all(&tmp).unwrap();
     let url = tmp.join("origin.git").to_string_lossy().into_owned();
     git(&tmp.to_string_lossy(), &["init", "--bare", "-q", &url]).unwrap();

@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-  if !diogen_lib::pty_host() {
-    diogen_lib::run();
+  if !vibecraft_lib::pty_host() {
+    vibecraft_lib::run();
   }
 }
