@@ -191,7 +191,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <Tabs v-model="activeTab" class="h-full gap-0">
           <div v-if="visibleTabs.length" class="flex h-9 shrink-0 items-center gap-1 px-2">
             <TabsList variant="line">
-              <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center">
+              <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center" @click.middle="closeTerminal(tab.key)">
                 <TabsTrigger :value="tab.key">
                   <AgentStatusIcon :status="tab.status">
                     <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
@@ -203,7 +203,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                   <span class="sr-only">Закрыть терминал</span>
                 </Button>
               </div>
-              <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center">
+              <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center" @click.middle="closeFile(file)">
                 <TabsTrigger :value="file.key" :title="file.path">
                   <FileCodeIcon />
                   {{ baseName(file.path) }}
