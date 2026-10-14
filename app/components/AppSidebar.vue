@@ -171,6 +171,7 @@ async function confirmRemoval() {
       </SidebarGroup>
     </SidebarContent>
     <SidebarFooter>
+      <AgentUsage />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton :is-active="view === 'settings'" @click="openSettings()">

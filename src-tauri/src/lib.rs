@@ -5,6 +5,7 @@ mod integrations;
 mod pty;
 mod ptyhost;
 mod state;
+mod usage;
 
 /// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
 #[tauri::command]
@@ -80,6 +81,8 @@ pub fn run() {
       files::fs_head,
       state::state_load,
       state::state_save,
+      usage::usage_claude,
+      usage::usage_codex,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
