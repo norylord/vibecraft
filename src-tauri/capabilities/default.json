@@ -11,6 +11,7 @@
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-set-theme",
     "dialog:default",
-    "notification:default"
+    "notification:default",
+    "updater:default"
   ]
 }

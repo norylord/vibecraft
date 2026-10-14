@@ -28,6 +28,12 @@ async fn installed(programs: Vec<String>) -> Vec<bool> {
   programs.iter().map(|p| std::env::split_paths(path).any(|dir| dir.join(p).is_file())).collect()
 }
 
+/// Перезапуск после установки обновления — хост терминалов живёт отдельно, агенты не прерываются
+#[tauri::command]
+fn restart(app: tauri::AppHandle) {
+  app.restart();
+}
+
 /// Запуск в роли хоста терминалов (`vibecraft --pty-host`) вместо окна приложения
 pub fn pty_host() -> bool {
   if std::env::args().nth(1).as_deref() != Some(ptyhost::ARG) {
@@ -40,6 +46,7 @@ pub fn pty_host() -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_dialog::init())
     .manage(pty::Ptys::default())
@@ -60,6 +67,7 @@ pub fn run() {
       git::git_clone,
       open_path,
       installed,
+      restart,
       integrations::integration_get,
       integrations::integration_save,
       integrations::integration_delete,

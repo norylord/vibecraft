@@ -56,6 +56,16 @@
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "13.0"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQwODJGRTlERjExNEY1NEYKUldSUDlSVHhuZjZDMER3MDdEc1ZkV2xZMU0xWE5FZi85TTFUUkMvZitLSU9mcVlteUFPME1NeUEK",
+      "endpoints": [
+        "https://github.com/norylord/vibecraft/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true
     }
   }
 }

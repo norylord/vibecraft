@@ -1,7 +1,8 @@
 name: release
 
 # Тег v* → опубликованный релиз с универсальным .dmg (Apple Silicon + Intel).
-# Версия тега берётся из src-tauri/tauri.conf.json
+# Версия тега берётся из src-tauri/tauri.conf.json. Список изменений — feat/fix-коммиты с прошлого тега:
+# он же уходит в latest.json и показывается в приложении в окне обновления
 on:
   push:
     tags: ['v*']
@@ -13,6 +14,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # история и теги — для списка изменений
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -27,12 +30,34 @@ jobs:
         with:
           workspaces: src-tauri
       - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v1
+      - id: notes
+        run: |
+          prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          section() {
+            items=$(git log --no-merges --format=%s ${prev:+$prev..}HEAD | sed -nE "s/^$1(\([^)]*\))?!?: (.+)/- \2/p")
+            if [ -n "$items" ]; then printf '### %s\n%s\n\n' "$2" "$items"; fi
+          }
+          body=$(section feat Новое; section fix Исправления)
+          { echo 'body<<NOTES_EOF'; echo "${body:-Мелкие улучшения}"; echo 'NOTES_EOF'; } >> "$GITHUB_OUTPUT"
+      - id: tauri
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Подпись обновлений: без неё приложение не примет новую версию. Ключ — ~/.tauri/vibecraft.key, без пароля
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
         with:
           tagName: v__VERSION__
           releaseName: Vibecraft v__VERSION__
-          releaseBody: 'Первый запуск: правый клик по Vibecraft.app → «Открыть» (приложение подписано ad-hoc, без Apple Developer ID).'
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           args: --target universal-apple-darwin
+      # Подсказка для первой установки — только на странице релиза: в окне обновления она ни к чему
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTES: ${{ steps.notes.outputs.body }}
+        run: |
+          gh release edit "v${{ steps.tauri.outputs.appVersion }}" --notes "$NOTES
+
+          ---
+          Первый запуск: правый клик по Vibecraft.app → «Открыть» (приложение подписано ad-hoc, без Apple Developer ID)."
