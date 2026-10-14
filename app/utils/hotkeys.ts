@@ -3,6 +3,7 @@ export const ACTIONS = [
   { id: 'sidebar', label: 'Показать / скрыть сайдбар', default: 'Meta+KeyB' },
   { id: 'panel', label: 'Показать / скрыть правую панель', default: 'Meta+KeyJ' },
   { id: 'terminal', label: 'Новый терминал', default: 'Meta+KeyT' },
+  { id: 'quickOpen', label: 'Открыть файл', default: 'Meta+KeyP' },
   { id: 'settings', label: 'Настройки', default: 'Meta+Comma' },
   { id: 'zoomIn', label: 'Увеличить масштаб', default: 'Meta+Equal' },
   { id: 'zoomOut', label: 'Уменьшить масштаб', default: 'Meta+Minus' },

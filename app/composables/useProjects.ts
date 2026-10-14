@@ -12,6 +12,7 @@ export const baseName = (path: string) => path.split('/').pop() ?? path
 
 export function useProjects() {
   const { closeTerminalsIn } = useTerminals()
+  const { closeFilesIn } = useEditor()
 
   const active = computed(() => {
     for (const repo of projects.value) {
@@ -56,7 +57,10 @@ export function useProjects() {
 
   // Убирает только из списка: на диске ничего не трогаем
   function removeProject(repo: string) {
-    worktrees.value[repo]?.forEach(wt => closeTerminalsIn(wt.path))
+    worktrees.value[repo]?.forEach((wt) => {
+      closeTerminalsIn(wt.path)
+      closeFilesIn(wt.path)
+    })
     if (active.value?.repo === repo) activeWorktree.value = undefined
     projects.value = projects.value.filter(p => p !== repo)
     delete worktrees.value[repo]
@@ -73,6 +77,7 @@ export function useProjects() {
   async function removeWorktree(repo: string, path: string, force: boolean) {
     await invoke('git_worktree_remove', { repo, path, force })
     closeTerminalsIn(path)
+    closeFilesIn(path)
     if (activeWorktree.value === path) activeWorktree.value = repo
     await refresh(repo)
   }

@@ -44,7 +44,7 @@ pub struct Worktree {
   branch: Option<String>,
 }
 
-fn git(dir: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) fn git(dir: &str, args: &[&str]) -> Result<String, String> {
   let out = git_cmd()
     .arg("-C")
     .arg(dir)

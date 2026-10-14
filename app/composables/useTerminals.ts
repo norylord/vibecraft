@@ -46,7 +46,8 @@ const STATUS_PRIORITY: AgentStatus[] = ['waiting', 'working', 'done']
 
 // SPA (ssr: false) — модульное состояние общее на всё приложение
 const terminals = ref<TerminalTab[]>([])
-const activeTerminal = ref<string>()
+// Активная вкладка рабочей области: терминал или открытый файл (useEditor)
+const activeTab = ref<string>()
 
 // Вкладки переживают перезапуск вместе с сессиями в хосте терминалов (src-tauri/src/ptyhost.rs).
 // Сохраняем только нужное для переподключения: title терминал меняет на лету — state.json писался бы постоянно.
@@ -70,7 +71,7 @@ export function useTerminals() {
     const name = agent?.name ?? 'Терминал'
     const tab: TerminalTab = { key: crypto.randomUUID(), title: name, name, cwd, ...(agent && withHooks(agent.command, prompt)) }
     terminals.value.push(tab)
-    activeTerminal.value = tab.key
+    activeTab.value = tab.key
   }
 
   // Активную вкладку после закрытия выбирает Workspace
@@ -97,7 +98,7 @@ export function useTerminals() {
       await invoke('pty_write', { key: tab.key, data: `\x1B[200~${text}\x1B[201~` })
       // Enter отдельной записью: в одной с текстом агент счёл бы его частью вставки
       setTimeout(() => invoke('pty_write', { key: tab.key, data: '\r' }), 200)
-      activeTerminal.value = tab.key
+      activeTab.value = tab.key
       return true
     }
     const agent = runnable.value.find(a => acceptsPrompt(a.command))
@@ -107,5 +108,5 @@ export function useTerminals() {
     return true
   }
 
-  return { terminals, activeTerminal, openTerminal, closeTerminal, closeTerminalsIn, statusIn, sendToAgent }
+  return { terminals, activeTab, openTerminal, closeTerminal, closeTerminalsIn, statusIn, sendToAgent }
 }

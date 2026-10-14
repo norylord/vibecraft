@@ -4,7 +4,7 @@ import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
 import type { ActionId } from '@/utils/hotkeys'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { toast } from 'vue-sonner'
-import { BotIcon, CodeXmlIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
+import { BotIcon, CodeXmlIcon, FileCodeIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
@@ -22,12 +22,16 @@ const paletteOpen = useState('palette', () => false)
 const panel = useTemplateRef<InstanceType<typeof SplitterPanel>>('panel')
 
 const { projects, activeWorktree, active, label } = useProjects()
-const { terminals, activeTerminal, openTerminal: open, closeTerminal } = useTerminals()
+const { terminals, activeTab, openTerminal: open, closeTerminal } = useTerminals()
+const { files, closeFile } = useEditor()
+const quickOpen = ref(false)
 
 // Вкладки — только активного worktree (без worktree — терминалы в домашней папке)
 const visibleTerminals = computed(() => terminals.value.filter(t => t.cwd === activeWorktree.value))
-watch(visibleTerminals, (list) => {
-  if (!list.some(t => t.key === activeTerminal.value)) activeTerminal.value = list.at(-1)?.key
+const visibleFiles = computed(() => files.value.filter(f => f.root === activeWorktree.value))
+const visibleTabs = computed(() => [...visibleTerminals.value, ...visibleFiles.value].map(t => t.key))
+watch(visibleTabs, (keys) => {
+  if (!keys.includes(activeTab.value!)) activeTab.value = keys.at(-1)
 })
 
 function openTerminal() {
@@ -63,7 +67,7 @@ async function onStatus(tab: TerminalTab, status: AgentStatus | 'idle' | 'exited
   if (next !== 'waiting' && next !== 'done') return
   // Пользователь и так смотрит на этого агента — не отвлекаем
   const focused = document.hasFocus()
-  if (focused && tab.key === activeTerminal.value) return
+  if (focused && tab.key === activeTab.value) return
   const title = `${tab.title}: ${next === 'waiting' ? 'ждёт ввода' : 'закончил'}`
   const body = tab.cwd ? label(tab.cwd) : ''
   if (focused) return void toast(title, { description: body })
@@ -99,6 +103,10 @@ const hotkeys: Record<ActionId, () => void> = {
   zoomIn: () => zoomBy(0.1),
   zoomOut: () => zoomBy(-0.1),
   zoomReset: () => (settings.value.zoom = 1),
+  quickOpen: () => {
+    paletteOpen.value = false
+    if (active.value) quickOpen.value = !quickOpen.value
+  },
 }
 useEventListener('keydown', (e: KeyboardEvent) => {
   const combo = comboOf(e)
@@ -152,8 +160,8 @@ useEventListener('keydown', (e: KeyboardEvent) => {
 
     <ResizablePanelGroup direction="horizontal" auto-save-id="vibecraft-workspace" class="min-h-0 flex-1">
       <ResizablePanel :min-size="40">
-        <Tabs v-model="activeTerminal" class="h-full gap-0">
-          <div v-if="visibleTerminals.length" class="flex h-9 shrink-0 items-center gap-1 px-2">
+        <Tabs v-model="activeTab" class="h-full gap-0">
+          <div v-if="visibleTabs.length" class="flex h-9 shrink-0 items-center gap-1 px-2">
             <TabsList variant="line">
               <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center">
                 <TabsTrigger :value="tab.key">
@@ -165,6 +173,18 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                 <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeTerminal(tab.key)">
                   <XIcon />
                   <span class="sr-only">Закрыть терминал</span>
+                </Button>
+              </div>
+              <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center">
+                <TabsTrigger :value="file.key" :title="file.path">
+                  <FileCodeIcon />
+                  {{ baseName(file.path) }}
+                  <span v-if="file.dirty" class="size-1.5 shrink-0 rounded-full bg-foreground" />
+                  <span v-if="file.dirty" class="sr-only">(не сохранён)</span>
+                </TabsTrigger>
+                <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeFile(file)">
+                  <XIcon />
+                  <span class="sr-only">Закрыть файл</span>
                 </Button>
               </div>
             </TabsList>
@@ -203,7 +223,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <Separator v-if="visibleTerminals.length" />
+          <Separator v-if="visibleTabs.length" />
           <WelcomePanel v-else-if="!projects.length" class="flex-1" @agents="openSettings('agents')" />
           <Empty v-else class="flex-1">
             <EmptyHeader>
@@ -242,13 +262,23 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               :restored="tab.restored"
               :cwd="tab.cwd"
               :command="tab.command"
-              :active="tab.key === activeTerminal"
+              :active="tab.key === activeTab"
               @title="tab.title = $event"
               :tracked="tab.tracked"
               :working-on-enter="tab.workingOnEnter"
               @status="onStatus(tab, $event)"
               @exit="closeTerminal(tab.key)"
             />
+          </TabsContent>
+          <!-- Файлы тоже смонтированы все: история правок (⌘Z) переживает переключение вкладок -->
+          <TabsContent
+            v-for="file in files"
+            :key="file.key"
+            :value="file.key"
+            force-mount
+            class="min-h-0 data-[state=inactive]:hidden"
+          >
+            <EditorPane :root="file.root" :path="file.path" :active="file.key === activeTab" @dirty="file.dirty = $event" />
           </TabsContent>
         </Tabs>
       </ResizablePanel>
@@ -259,6 +289,9 @@ useEventListener('keydown', (e: KeyboardEvent) => {
             <TabsTrigger value="diff">
               Изменения
             </TabsTrigger>
+            <TabsTrigger value="files">
+              Файлы
+            </TabsTrigger>
             <TabsTrigger value="task">
               Задача
             </TabsTrigger>
@@ -268,6 +301,9 @@ useEventListener('keydown', (e: KeyboardEvent) => {
           </TabsList>
           <TabsContent value="diff" class="min-h-0">
             <ChangesPanel />
+          </TabsContent>
+          <TabsContent value="files" class="min-h-0">
+            <FilesPanel />
           </TabsContent>
           <TabsContent value="task" class="min-h-0">
             <TaskPanel />
@@ -304,6 +340,11 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         </CommandItem>
       </CommandGroup>
       <CommandGroup v-if="active" heading="Worktree">
+        <CommandItem value="quick-open" @select="run(() => quickOpen = true)">
+          <FileCodeIcon />
+          Открыть файл…
+          <CommandShortcut>{{ shortcut('quickOpen') }}</CommandShortcut>
+        </CommandItem>
         <CommandItem value="open-webstorm" @select="run(() => openWorktree(settings.editor))">
           <CodeXmlIcon />
           Открыть в {{ settings.editor }}
@@ -352,5 +393,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
       </CommandGroup>
     </CommandList>
   </CommandDialog>
+
+  <QuickOpen v-model:open="quickOpen" />
 
 </template>

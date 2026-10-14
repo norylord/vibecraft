@@ -1,3 +1,4 @@
+mod files;
 mod git;
 mod hooks;
 mod integrations;
@@ -64,6 +65,11 @@ pub fn run() {
       integrations::integration_delete,
       integrations::api_request,
       hooks::save_prompt,
+      files::fs_list,
+      files::fs_read,
+      files::fs_write,
+      files::fs_stat,
+      files::fs_head,
       state::state_load,
       state::state_save,
     ])

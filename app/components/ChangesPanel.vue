@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowUpIcon, ChevronRightIcon, GitCommitHorizontalIcon, GitCompareIcon, RefreshCwIcon } from '@lucide/vue'
+import { ArrowUpIcon, ChevronRightIcon, FilePenIcon, GitCommitHorizontalIcon, GitCompareIcon, RefreshCwIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useEventListener } from '@vueuse/core'
 import { toast } from 'vue-sonner'
@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 
 const { active, worktrees } = useProjects()
 const { statusIn } = useTerminals()
+const { openFile } = useEditor()
 
 const diff = ref('')
 // ahead: null — ветку ещё не публиковали; remote: null — публиковать некуда
@@ -122,9 +123,13 @@ const lineClass = (line: string) => cn('px-3 whitespace-pre', {
       <!-- Большие файлы (lock-файлы и т.п.) свёрнуты, чтобы не тормозить рендер -->
       <template v-else>
         <details v-for="file in files" :key="file.path" :open="file.lines.length < 400" class="group border-b">
-          <summary class="sticky top-0 flex list-none items-center gap-2 bg-background px-1 py-1.5 text-xs [&::-webkit-details-marker]:hidden">
+          <summary class="group/file sticky top-0 flex list-none items-center gap-2 bg-background px-1 py-1.5 text-xs [&::-webkit-details-marker]:hidden">
             <ChevronRightIcon class="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
             <span class="truncate font-mono">{{ file.path }}</span>
+            <Button variant="ghost" size="icon-xs" class="shrink-0 opacity-0 group-hover/file:opacity-100 focus-visible:opacity-100" @click.prevent="openFile(active!.wt.path, file.path)">
+              <FilePenIcon />
+              <span class="sr-only">Открыть в редакторе</span>
+            </Button>
             <span class="ml-auto shrink-0 text-success">+{{ file.added }}</span>
             <span class="shrink-0 text-destructive">−{{ file.removed }}</span>
           </summary>
