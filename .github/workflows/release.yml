@@ -1,6 +1,6 @@
 name: release
 
-# Тег v* → черновик релиза с универсальным .dmg (Apple Silicon + Intel).
+# Тег v* → опубликованный релиз с универсальным .dmg (Apple Silicon + Intel).
 # Версия тега берётся из src-tauri/tauri.conf.json
 on:
   push:
@@ -34,5 +34,5 @@ jobs:
           tagName: v__VERSION__
           releaseName: Vibecraft v__VERSION__
           releaseBody: 'Первый запуск: правый клик по Vibecraft.app → «Открыть» (приложение подписано ad-hoc, без Apple Developer ID).'
-          releaseDraft: true
+          releaseDraft: false
           args: --target universal-apple-darwin
