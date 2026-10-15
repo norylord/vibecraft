@@ -5,7 +5,7 @@ import { useEventListener } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 import { cn } from '@/lib/utils'
 
-const { active, worktrees } = useProjects()
+const { active, worktrees, bases } = useProjects()
 const { statusIn } = useTerminals()
 const { openFile } = useEditor()
 
@@ -20,10 +20,11 @@ const totals = computed(() => files.value.reduce(
   { added: 0, removed: 0 },
 ))
 
-// База — ветка основного worktree (от неё создаются новые); у самого основного — только незакоммиченное
+// База — ветка, от которой создан worktree (старые — ветка основного); у самого основного — только незакоммиченное
 const base = computed(() => {
   const main = active.value && worktrees.value[active.value.repo]?.[0]
-  return main && main.path !== active.value?.wt.path ? main.branch ?? undefined : undefined
+  if (!main || main.path === active.value?.wt.path) return undefined
+  return bases.value[active.value!.wt.path] ?? main.branch ?? undefined
 })
 
 async function load() {

@@ -7,6 +7,10 @@ export interface Worktree { path: string, branch: string | null }
 const projects = persisted<string[]>('projects', [])
 const worktrees = ref<Record<string, Worktree[]>>({})
 const activeWorktree = ref<string>()
+// От какой ветки создан worktree (по пути) — от неё ChangesPanel считает diff
+const bases = persisted<Record<string, string>>('worktree-bases', {})
+// Последняя выбранная база по репозиторию — подставляется в следующий раз
+const lastBase = persisted<Record<string, string>>('last-bases', {})
 
 export const baseName = (path: string) => path.split('/').pop() ?? path
 
@@ -67,8 +71,10 @@ export function useProjects() {
   }
 
   // Ошибки git пробрасываются: их показывает диалог, который вызвал
-  async function createWorktree(repo: string, branch: string) {
-    const path = await invoke<string>('git_worktree_add', { repo, branch })
+  async function createWorktree(repo: string, branch: string, base: string) {
+    const path = await invoke<string>('git_worktree_add', { repo, branch, base })
+    bases.value[path] = base
+    lastBase.value[repo] = base
     await refresh(repo)
     activeWorktree.value = path
     return path
@@ -78,9 +84,10 @@ export function useProjects() {
     await invoke('git_worktree_remove', { repo, path, force })
     closeTerminalsIn(path)
     closeFilesIn(path)
+    delete bases.value[path]
     if (activeWorktree.value === path) activeWorktree.value = repo
     await refresh(repo)
   }
 
-  return { projects, worktrees, activeWorktree, active, label, refresh, refreshAll, addPath, addProject, removeProject, createWorktree, removeWorktree }
+  return { projects, worktrees, activeWorktree, active, bases, lastBase, label, refresh, refreshAll, addPath, addProject, removeProject, createWorktree, removeWorktree }
 }

@@ -14,6 +14,7 @@ const wideTerminal = useState('wide-terminal', () => 0)
 const repo = ref('')
 const agentName = ref('')
 const branch = ref('')
+const base = ref('')
 const message = ref('')
 const busy = ref(false)
 const error = ref<string>()
@@ -32,7 +33,7 @@ async function submit() {
   if (!issue.value || !agent || !repo.value || busy.value) return
   busy.value = true
   try {
-    const result = await start(issue.value, repo.value, branch.value.trim(), agent, message.value)
+    const result = await start(issue.value, repo.value, branch.value.trim(), base.value, agent, message.value)
     if (result === 'clipboard') toast.info('Промпт задачи в буфере обмена — вставьте его в агента')
     issue.value = undefined
     view.value = 'workspace'
@@ -96,6 +97,10 @@ async function submit() {
             <FieldError :errors="[error]" />
           </Field>
           <Field>
+            <FieldLabel for="start-base">От ветки</FieldLabel>
+            <BaseBranchSelect id="start-base" v-model="base" :repo="repo" />
+          </Field>
+          <Field>
             <FieldLabel for="start-message">Сообщение агенту</FieldLabel>
             <Textarea
               id="start-message"
@@ -109,7 +114,7 @@ async function submit() {
           </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button type="submit" :disabled="busy || !repo || !agentName || !branch.trim()">
+          <Button type="submit" :disabled="busy || !repo || !agentName || !branch.trim() || !base">
             <Spinner v-if="busy" data-icon="inline-start" />
             <PlayIcon v-else data-icon="inline-start" />
             Начать

@@ -69,10 +69,10 @@ export function useYouTrack() {
   // Worktree под задачу (существующий для этой ветки переиспользуем) + агент с промптом из задачи.
   // Возвращает 'clipboard', если агент не принимает промпт аргументом и его надо вставить руками
   // message — стартовое сообщение от пользователя: с чего начать, особенно если в задаче пусто
-  async function start(issue: Issue, repo: string, branch: string, agent: AgentPreset, message = '') {
+  async function start(issue: Issue, repo: string, branch: string, base: string, agent: AgentPreset, message = '') {
     repoFor.value[issue.project] = repo
     await refresh(repo)
-    const path = worktrees.value[repo]?.find(w => w.branch === branch)?.path ?? await createWorktree(repo, branch)
+    const path = worktrees.value[repo]?.find(w => w.branch === branch)?.path ?? await createWorktree(repo, branch, base)
     activeWorktree.value = path
     links.value[path] = issue.id
 

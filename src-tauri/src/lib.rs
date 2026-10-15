@@ -58,6 +58,7 @@ pub fn run() {
       pty::pty_kill,
       git::git_root,
       git::git_worktrees,
+      git::git_branches,
       git::git_worktree_add,
       git::git_worktree_remove,
       git::git_diff,

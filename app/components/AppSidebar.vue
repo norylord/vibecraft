@@ -22,6 +22,7 @@ useEventListener(window, 'focus', refreshAll)
 
 const newWorktreeFor = ref<string>()
 const branch = ref('')
+const base = ref('')
 const branchError = ref<string>()
 const creating = ref(false)
 
@@ -34,7 +35,7 @@ function startNewWorktree(repo: string) {
 async function submitWorktree() {
   creating.value = true
   try {
-    await createWorktree(newWorktreeFor.value!, branch.value.trim())
+    await createWorktree(newWorktreeFor.value!, branch.value.trim(), base.value)
     newWorktreeFor.value = undefined
   }
   catch (e) {
@@ -190,7 +191,7 @@ async function confirmRemoval() {
         <DialogHeader>
           <DialogTitle>Новый worktree</DialogTitle>
           <DialogDescription>
-            {{ baseName(newWorktreeFor ?? '') }}: ветка создастся от текущего HEAD, если её ещё нет
+            {{ baseName(newWorktreeFor ?? '') }}: если ветка уже есть — переиспользуем
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
@@ -199,9 +200,13 @@ async function confirmRemoval() {
             <Input id="branch" v-model="branch" placeholder="feat/new-thing" autofocus :aria-invalid="!!branchError || undefined" />
             <FieldError :errors="[branchError]" />
           </Field>
+          <Field>
+            <FieldLabel for="base">От ветки</FieldLabel>
+            <BaseBranchSelect id="base" v-model="base" :repo="newWorktreeFor ?? ''" />
+          </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button type="submit" :disabled="creating || !branch.trim()">
+          <Button type="submit" :disabled="creating || !branch.trim() || !base">
             <Spinner v-if="creating" data-icon="inline-start" />
             Создать
           </Button>
