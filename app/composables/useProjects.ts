@@ -1,3 +1,4 @@
+import type { Ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { toast } from 'vue-sonner'
@@ -5,6 +6,8 @@ import { toast } from 'vue-sonner'
 export interface Worktree { path: string, branch: string | null }
 
 const projects = persisted<string[]>('projects', [])
+const hidden = persisted<string[]>('hiddenProjects', [])
+const collapsed = persisted<string[]>('collapsedProjects', [])
 const worktrees = ref<Record<string, Worktree[]>>({})
 const activeWorktree = ref<string>()
 // От какой ветки создан worktree (по пути) — от неё ChangesPanel считает diff
@@ -13,6 +16,8 @@ const bases = persisted<Record<string, string>>('worktree-bases', {})
 const lastBase = persisted<Record<string, string>>('last-bases', {})
 
 export const baseName = (path: string) => path.split('/').pop() ?? path
+
+const without = (list: string[], repo: string) => list.filter(p => p !== repo)
 
 export function useProjects() {
   const { closeTerminalsIn } = useTerminals()
@@ -49,6 +54,7 @@ export function useProjects() {
   async function addPath(dir: string) {
     const repo = await invoke<string>('git_root', { path: dir })
     if (!projects.value.includes(repo)) projects.value.push(repo)
+    hidden.value = without(hidden.value, repo)
     await refresh(repo)
     activeWorktree.value = repo
     return repo
@@ -66,9 +72,17 @@ export function useProjects() {
       closeFilesIn(wt.path)
     })
     if (active.value?.repo === repo) activeWorktree.value = undefined
-    projects.value = projects.value.filter(p => p !== repo)
+    projects.value = without(projects.value, repo)
+    hidden.value = without(hidden.value, repo)
+    collapsed.value = without(collapsed.value, repo)
     delete worktrees.value[repo]
   }
+
+  const toggle = (list: Ref<string[]>, repo: string) => {
+    list.value = list.value.includes(repo) ? without(list.value, repo) : [...list.value, repo]
+  }
+  const toggleHidden = (repo: string) => toggle(hidden, repo)
+  const toggleCollapsed = (repo: string) => toggle(collapsed, repo)
 
   // Ошибки git пробрасываются: их показывает диалог, который вызвал
   async function createWorktree(repo: string, branch: string, base: string) {
@@ -89,5 +103,5 @@ export function useProjects() {
     await refresh(repo)
   }
 
-  return { projects, worktrees, activeWorktree, active, bases, lastBase, label, refresh, refreshAll, addPath, addProject, removeProject, createWorktree, removeWorktree }
+  return { projects, hidden, collapsed, worktrees, activeWorktree, active, bases, lastBase, label, refresh, refreshAll, addPath, addProject, removeProject, toggleHidden, toggleCollapsed, createWorktree, removeWorktree }
 }
