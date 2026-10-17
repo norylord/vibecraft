@@ -27,9 +27,10 @@ export function useEditor() {
     files.value = files.value.filter(f => f.key !== file.key)
   }
 
-  // Worktree удалён — его файлов больше нет
-  function closeFilesIn(root: string) {
-    files.value = files.value.filter(f => f.root !== root)
+  // Worktree удалён — его файлов больше нет; path — удалили файл или папку внутри него
+  function closeFilesIn(root: string, path?: string) {
+    const gone = (f: FileTab) => f.root === root && (path === undefined || f.path === path || f.path.startsWith(`${path}/`))
+    files.value = files.value.filter(f => !gone(f))
   }
 
   return { files, openFile, closeFile, closeFilesIn }
