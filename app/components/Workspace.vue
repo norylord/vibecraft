@@ -150,7 +150,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
   <SidebarInset v-show="!hidden" :class="cn('min-w-0 overflow-hidden', !hidden && 'animate-in fade-in duration-200')">
     <AppHeader>
       <template v-if="active">
-        <span class="text-foreground">{{ baseName(active.repo) }}</span> / {{ active.wt.branch ?? 'detached HEAD' }}
+        <span class="text-foreground">{{ baseName(active.repo) }}</span> / {{ worktreeName(active.wt) }}
       </template>
       <template v-else>Worktree не выбран</template>
       <template #actions>
@@ -250,7 +250,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                 </template>
               </DropdownMenuContent>
             </DropdownMenu>
-            <DropdownMenu v-if="activeAgent && reviewers.length">
+            <DropdownMenu v-if="active?.wt.git && activeAgent && reviewers.length">
               <DropdownMenuTrigger as-child>
                 <Button variant="ghost" size="sm" class="ml-auto">
                   <ScanSearchIcon data-icon="inline-start" />

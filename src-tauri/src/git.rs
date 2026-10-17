@@ -42,6 +42,8 @@ pub struct Worktree {
   path: String,
   /// None — detached HEAD
   branch: Option<String>,
+  /// false — папка без git: только терминалы и файлы
+  git: bool,
 }
 
 pub(crate) fn git(dir: &str, args: &[&str]) -> Result<String, String> {
@@ -73,20 +75,32 @@ fn parse_worktrees(porcelain: &str) -> Vec<Worktree> {
           return None;
         }
       }
-      Some(Worktree { path: path?, branch })
+      Some(Worktree { path: path?, branch, git: true })
     })
     .collect()
 }
 
-/// Корень репозитория для любой папки внутри него
+/// Корень репозитория или worktree (у worktree .git — файл)
+pub(crate) fn is_repo(path: &str) -> bool {
+  Path::new(path).join(".git").exists()
+}
+
+/// Корень репозитория для любой папки внутри него; папка без git — сама себе проект.
+/// Не по ошибке git: её текст зависит от локали, а другие ошибки (dubious ownership) надо показать
 #[tauri::command]
 pub async fn git_root(path: String) -> Result<String, String> {
+  if !Path::new(&path).ancestors().any(|p| p.join(".git").exists()) {
+    return Ok(path);
+  }
   Ok(git(&path, &["rev-parse", "--show-toplevel"])?.trim().to_owned())
 }
 
 /// Первым всегда идёт основной worktree репозитория
 #[tauri::command]
 pub async fn git_worktrees(repo: String) -> Result<Vec<Worktree>, String> {
+  if !is_repo(&repo) {
+    return Ok(vec![Worktree { path: repo, branch: None, git: false }]);
+  }
   Ok(parse_worktrees(&git(&repo, &["worktree", "list", "--porcelain"])?))
 }
 
@@ -269,9 +283,9 @@ mod tests {
     assert_eq!(
       parse_worktrees(out),
       vec![
-        Worktree { path: "/repo".into(), branch: Some("main".into()) },
-        Worktree { path: "/wt/feat x".into(), branch: Some("feat/x".into()) },
-        Worktree { path: "/wt/detached".into(), branch: None },
+        Worktree { path: "/repo".into(), branch: Some("main".into()), git: true },
+        Worktree { path: "/wt/feat x".into(), branch: Some("feat/x".into()), git: true },
+        Worktree { path: "/wt/detached".into(), branch: None, git: true },
       ]
     );
   }

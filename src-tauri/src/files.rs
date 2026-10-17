@@ -7,7 +7,7 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
-use crate::git::git;
+use crate::git::{git, is_repo};
 
 const MAX_SIZE: u64 = 5 << 20;
 /// Ошибка записи: файл изменили на диске после того, как редактор его прочитал
@@ -31,16 +31,49 @@ fn mtime(path: &Path) -> Result<u64, String> {
   Ok(modified.duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_millis() as u64)
 }
 
-/// Файлы worktree без игнорируемых .gitignore: отслеживаемые и новые
+/// Без git нет .gitignore: кроме скрытых папок пропускаем типичные папки зависимостей и сборки
+const SKIP_DIRS: [&str; 4] = ["node_modules", "target", "dist", "build"];
+/// Папкой без git могли выбрать что-то огромное (весь домашний каталог) — дальше не обходим
+const MAX_FILES: usize = 50_000;
+
+// ponytail: .gitignore не читаем, список папок захардкожен; читать его, если в дереве станет шумно
+fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
+  let Ok(entries) = fs::read_dir(dir) else { return };
+  for entry in entries.flatten() {
+    if out.len() >= MAX_FILES {
+      return;
+    }
+    let path = entry.path();
+    // file_type не идёт по симлинкам — циклов не будет
+    match entry.file_type() {
+      Ok(t) if t.is_dir() => {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_ref()) {
+          walk(root, &path, out);
+        }
+      }
+      Ok(t) if t.is_file() => {
+        if let Ok(rel) = path.strip_prefix(root) {
+          out.push(rel.to_string_lossy().into_owned());
+        }
+      }
+      _ => {}
+    }
+  }
+}
+
+/// Файлы worktree без игнорируемых .gitignore: отслеживаемые и новые. Папка без git — обход диска
 #[tauri::command]
 pub async fn fs_list(root: String) -> Result<Vec<String>, String> {
-  let out = git(&root, &["ls-files", "-z", "--cached", "--others", "--exclude-standard"])?;
-  // --cached показывает и удалённые, но ещё не закоммиченные файлы, а при конфликте слияния — путь трижды
-  let mut files: Vec<String> = out
-    .split('\0')
-    .filter(|f| !f.is_empty() && Path::new(&root).join(f).is_file())
-    .map(str::to_owned)
-    .collect();
+  let mut files = Vec::new();
+  if is_repo(&root) {
+    let out = git(&root, &["ls-files", "-z", "--cached", "--others", "--exclude-standard"])?;
+    // --cached показывает и удалённые, но ещё не закоммиченные файлы, а при конфликте слияния — путь трижды
+    files.extend(out.split('\0').filter(|f| !f.is_empty() && Path::new(&root).join(f).is_file()).map(str::to_owned));
+  } else {
+    walk(Path::new(&root), Path::new(&root), &mut files);
+  }
   files.sort();
   files.dedup();
   Ok(files)
@@ -128,6 +161,22 @@ mod tests {
     let ok = tauri::async_runtime::block_on(fs_write(root.into(), "src/a.txt".into(), "b".into(), Some(file.mtime)));
     assert!(ok.is_ok());
     assert_eq!(fs::read_to_string(dir.join("wt/src/a.txt")).unwrap(), "b");
+    fs::remove_dir_all(&dir).unwrap();
+  }
+
+  #[test]
+  fn folder_without_git_is_own_project() {
+    let dir = std::env::temp_dir().join(format!("vibecraft-nogit-{}", std::process::id()));
+    for f in ["src/a.ts", ".env", "node_modules/x/index.js", ".cache/c"] {
+      let path = dir.join(f);
+      fs::create_dir_all(path.parent().unwrap()).unwrap();
+      fs::write(path, "").unwrap();
+    }
+    let root = dir.to_string_lossy().into_owned();
+
+    assert_eq!(tauri::async_runtime::block_on(crate::git::git_root(root.clone())).unwrap(), root);
+    let files = tauri::async_runtime::block_on(fs_list(root)).unwrap();
+    assert_eq!(files, [".env", "src/a.ts"], "без скрытых папок и node_modules");
     fs::remove_dir_all(&dir).unwrap();
   }
 }
