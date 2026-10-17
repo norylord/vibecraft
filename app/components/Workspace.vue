@@ -3,6 +3,7 @@ import type { AgentPreset } from '@/composables/useAgents'
 import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
 import type { ActionId } from '@/utils/hotkeys'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
+import { ask } from '@tauri-apps/plugin-dialog'
 import { toast } from 'vue-sonner'
 import { BotIcon, CodeXmlIcon, FileCodeIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, ScanSearchIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
@@ -35,6 +36,23 @@ const visibleTabs = computed(() => [...visibleTerminals.value, ...visibleFiles.v
 watch(visibleTabs, (keys) => {
   if (!keys.includes(activeTab.value!)) activeTab.value = keys.at(-1)
 })
+
+// Контекстное меню полосы вкладок: key вкладки под курсором, мимо вкладок — undefined (только «Закрыть все»)
+const menuTab = ref<string>()
+const menuIndex = computed(() => visibleTabs.value.indexOf(menuTab.value!))
+const menuFile = computed(() => visibleFiles.value.find(f => f.key === menuTab.value))
+const tabAt = (e: Event) => (e.target as Element).closest<HTMLElement>('[data-tab]')?.dataset.tab
+
+// Несохранённый файл спросит сам при закрытии; агентов, закрываемых пачкой, подтверждаем одним вопросом
+async function closeTabs(keys: string[]) {
+  const running = terminals.value.filter(t => keys.includes(t.key) && t.command && !t.exited).length
+  if (keys.length > 1 && running && !await ask(`Будут остановлены агенты: ${running}`, { title: 'Закрыть вкладки?', kind: 'warning', okLabel: 'Закрыть', cancelLabel: 'Отмена' })) return
+  for (const key of keys) {
+    const file = files.value.find(f => f.key === key)
+    if (file) await closeFile(file)
+    else closeTerminal(key)
+  }
+}
 
 function openTerminal() {
   view.value = 'workspace'
@@ -191,86 +209,119 @@ useEventListener('keydown', (e: KeyboardEvent) => {
     <ResizablePanelGroup direction="horizontal" auto-save-id="vibecraft-workspace" class="min-h-0 flex-1">
       <ResizablePanel :min-size="40">
         <Tabs v-model="activeTab" class="h-full gap-0">
-          <div v-if="visibleTabs.length" class="flex h-9 shrink-0 items-center gap-1 px-2">
-            <TabsList variant="line">
-              <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center" @click.middle="closeTerminal(tab.key)">
-                <TabsTrigger :value="tab.key">
-                  <AgentStatusIcon :status="tab.status">
-                    <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
-                  </AgentStatusIcon>
-                  {{ tab.title }}
-                </TabsTrigger>
-                <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeTerminal(tab.key)">
-                  <XIcon />
-                  <span class="sr-only">Закрыть терминал</span>
-                </Button>
+          <ContextMenu v-if="visibleTabs.length">
+            <ContextMenuTrigger as-child>
+              <div class="flex h-9 shrink-0 items-center gap-1 px-2" @contextmenu="menuTab = tabAt($event)">
+                <TabsList variant="line">
+                  <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center" :data-tab="tab.key" @click.middle="closeTerminal(tab.key)">
+                    <TabsTrigger :value="tab.key">
+                      <AgentStatusIcon :status="tab.status">
+                        <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
+                      </AgentStatusIcon>
+                      {{ tab.title }}
+                    </TabsTrigger>
+                    <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeTerminal(tab.key)">
+                      <XIcon />
+                      <span class="sr-only">Закрыть терминал</span>
+                    </Button>
+                  </div>
+                  <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center" :data-tab="file.key" @click.middle="closeFile(file)">
+                    <TabsTrigger :value="file.key" :title="file.path">
+                      <FileCodeIcon />
+                      {{ baseName(file.path) }}
+                      <span v-if="file.dirty" class="size-1.5 shrink-0 rounded-full bg-foreground" />
+                      <span v-if="file.dirty" class="sr-only">(не сохранён)</span>
+                    </TabsTrigger>
+                    <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeFile(file)">
+                      <XIcon />
+                      <span class="sr-only">Закрыть файл</span>
+                    </Button>
+                  </div>
+                </TabsList>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="icon-xs">
+                      <PlusIcon />
+                      <span class="sr-only">Новый терминал или агент</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <!-- Без возврата фокуса на «+»: новый терминал фокусируется сам, а меню закрывается позже и перебило бы его -->
+                  <DropdownMenuContent align="start" @close-auto-focus.prevent>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem @select="openTerminal">
+                        <SquareTerminalIcon />
+                        Терминал
+                        <DropdownMenuShortcut>{{ shortcut('terminal') }}</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                    <template v-if="active">
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem v-for="agent in agents" :key="agent.name" @select="launch(agent)">
+                          <BotIcon />
+                          {{ agent.name }}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem @select="openSettings('agents')">
+                          <Settings2Icon />
+                          Настроить агентов…
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </template>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu v-if="active?.wt.git && activeAgent && reviewers.length">
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="sm" class="ml-auto">
+                      <ScanSearchIcon data-icon="inline-start" />
+                      Ревью
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <!-- Как у «+»: фокус уходит в терминал ревьюера, а не обратно на кнопку -->
+                  <DropdownMenuContent align="end" @close-auto-focus.prevent>
+                    <DropdownMenuLabel>Отдать на ревью</DropdownMenuLabel>
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem v-for="agent in reviewers" :key="agent.name" @select="review(agent)">
+                        <BotIcon />
+                        {{ agent.name }}
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-              <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center" @click.middle="closeFile(file)">
-                <TabsTrigger :value="file.key" :title="file.path">
-                  <FileCodeIcon />
-                  {{ baseName(file.path) }}
-                  <span v-if="file.dirty" class="size-1.5 shrink-0 rounded-full bg-foreground" />
-                  <span v-if="file.dirty" class="sr-only">(не сохранён)</span>
-                </TabsTrigger>
-                <Button variant="ghost" size="icon-xs" class="opacity-0 group-hover/tab:opacity-100" @click="closeFile(file)">
-                  <XIcon />
-                  <span class="sr-only">Закрыть файл</span>
-                </Button>
-              </div>
-            </TabsList>
-            <DropdownMenu>
-              <DropdownMenuTrigger as-child>
-                <Button variant="ghost" size="icon-xs">
-                  <PlusIcon />
-                  <span class="sr-only">Новый терминал или агент</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <!-- Без возврата фокуса на «+»: новый терминал фокусируется сам, а меню закрывается позже и перебило бы его -->
-              <DropdownMenuContent align="start" @close-auto-focus.prevent>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem @select="openTerminal">
-                    <SquareTerminalIcon />
-                    Терминал
-                    <DropdownMenuShortcut>{{ shortcut('terminal') }}</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <template v-if="active">
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem v-for="agent in agents" :key="agent.name" @select="launch(agent)">
-                      <BotIcon />
-                      {{ agent.name }}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem @select="openSettings('agents')">
-                      <Settings2Icon />
-                      Настроить агентов…
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-48">
+              <ContextMenuGroup>
+                <template v-if="menuTab">
+                  <ContextMenuItem @select="closeTabs([menuTab!])">
+                    Закрыть
+                  </ContextMenuItem>
+                  <ContextMenuItem :disabled="visibleTabs.length < 2" @select="closeTabs(visibleTabs.filter(k => k !== menuTab))">
+                    Закрыть другие
+                  </ContextMenuItem>
+                  <ContextMenuItem :disabled="menuIndex === 0" @select="closeTabs(visibleTabs.slice(0, menuIndex))">
+                    Закрыть слева
+                  </ContextMenuItem>
+                  <ContextMenuItem :disabled="menuIndex === visibleTabs.length - 1" @select="closeTabs(visibleTabs.slice(menuIndex + 1))">
+                    Закрыть справа
+                  </ContextMenuItem>
                 </template>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu v-if="active?.wt.git && activeAgent && reviewers.length">
-              <DropdownMenuTrigger as-child>
-                <Button variant="ghost" size="sm" class="ml-auto">
-                  <ScanSearchIcon data-icon="inline-start" />
-                  Ревью
-                </Button>
-              </DropdownMenuTrigger>
-              <!-- Как у «+»: фокус уходит в терминал ревьюера, а не обратно на кнопку -->
-              <DropdownMenuContent align="end" @close-auto-focus.prevent>
-                <DropdownMenuLabel>Отдать на ревью</DropdownMenuLabel>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem v-for="agent in reviewers" :key="agent.name" @select="review(agent)">
-                    <BotIcon />
-                    {{ agent.name }}
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                <ContextMenuItem @select="closeTabs(visibleTabs)">
+                  Закрыть все
+                </ContextMenuItem>
+              </ContextMenuGroup>
+              <template v-if="menuFile">
+                <ContextMenuSeparator />
+                <ContextMenuGroup>
+                  <ContextMenuItem @select="openPath(`${menuFile!.root}/${menuFile!.path}`, { reveal: true })">
+                    Показать в Finder
+                  </ContextMenuItem>
+                </ContextMenuGroup>
+              </template>
+            </ContextMenuContent>
+          </ContextMenu>
           <Separator v-if="visibleTabs.length" />
           <WelcomePanel v-else-if="!projects.length" class="flex-1" @agents="openSettings('agents')" />
           <Empty v-else class="flex-1">
