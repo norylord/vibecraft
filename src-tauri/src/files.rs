@@ -2,7 +2,9 @@
 //! Агент правит те же файлы параллельно: запись сверяет время изменения, чтобы не затереть его правки
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -13,12 +15,19 @@ const MAX_SIZE: u64 = 5 << 20;
 /// Ошибка записи: файл изменили на диске после того, как редактор его прочитал
 const CONFLICT: &str = "conflict";
 
+/// Путь относительно worktree: без абсолютных путей и `..`
+fn relative(path: &str) -> Result<&Path, String> {
+  let p = Path::new(path);
+  if p.components().all(|c| matches!(c, Component::Normal(_))) {
+    Ok(p)
+  } else {
+    Err(format!("недопустимый путь: {path}"))
+  }
+}
+
 /// Только внутри worktree: без абсолютных путей, `..` и симлинков наружу
 fn resolve(root: &str, path: &str) -> Result<PathBuf, String> {
-  if !Path::new(path).components().all(|c| matches!(c, Component::Normal(_))) {
-    return Err(format!("недопустимый путь: {path}"));
-  }
-  let full = Path::new(root).join(path).canonicalize().map_err(|e| format!("{path}: {e}"))?;
+  let full = Path::new(root).join(relative(path)?).canonicalize().map_err(|e| format!("{path}: {e}"))?;
   let root = Path::new(root).canonicalize().map_err(|e| e.to_string())?;
   if !full.starts_with(&root) {
     return Err(format!("{path} ведёт за пределы worktree"));
@@ -109,6 +118,60 @@ pub async fn fs_write(root: String, path: String, text: String, expected: Option
   mtime(&full)
 }
 
+/// Новый пустой файл, недостающие папки создаются. Уже есть — ошибка
+#[tauri::command]
+pub async fn fs_create(root: String, path: String) -> Result<(), String> {
+  let full = Path::new(&root).join(relative(&path)?);
+  // Ближайшая существующая папка — внутри worktree; всё ниже неё создаём сами, симлинков наружу там нет
+  let dir = full.ancestors().skip(1).find(|p| p.is_dir()).and_then(|p| p.strip_prefix(&root).ok());
+  resolve(&root, &dir.ok_or(format!("недопустимый путь: {path}"))?.to_string_lossy())?;
+  fs::create_dir_all(full.parent().unwrap()).map_err(|e| e.to_string())?;
+  fs::File::create_new(&full).map_err(|e| match e.kind() {
+    ErrorKind::AlreadyExists => format!("{path} уже существует"),
+    _ => format!("{path}: {e}"),
+  })?;
+  Ok(())
+}
+
+/// Файл или папка целиком, безвозвратно. Симлинк удаляется сам, а не то, куда он ведёт
+#[tauri::command]
+pub async fn fs_delete(root: String, path: String) -> Result<(), String> {
+  // Пустой путь — сам worktree: parent у него нет
+  let parent = relative(&path)?.parent().ok_or(format!("недопустимый путь: {path}"))?;
+  let full = resolve(&root, &parent.to_string_lossy())?.join(Path::new(&path).file_name().unwrap());
+  let meta = fs::symlink_metadata(&full).map_err(|e| format!("{path}: {e}"))?;
+  if meta.is_dir() { fs::remove_dir_all(&full) } else { fs::remove_file(&full) }.map_err(|e| format!("{path}: {e}"))
+}
+
+/// Перетаскивание из Finder: файлы и папки `sources` (абсолютные пути) копируются в папку `dir` worktree.
+/// Имя занято — ошибка до копирования, ничего не затираем
+#[tauri::command]
+pub async fn fs_copy(root: String, dir: String, sources: Vec<String>) -> Result<(), String> {
+  let dir = resolve(&root, &dir)?;
+  let mut pairs = Vec::new();
+  for src in &sources {
+    let src = Path::new(src);
+    let name = src.file_name().ok_or(format!("недопустимый путь: {}", src.display()))?;
+    let dest = dir.join(name);
+    if dest.symlink_metadata().is_ok() {
+      return Err(format!("{} уже существует", name.to_string_lossy()));
+    }
+    // cp -R внутрь самого себя копировал бы бесконечно
+    if src.canonicalize().is_ok_and(|s| dir.starts_with(s)) {
+      return Err(format!("нельзя скопировать {} в саму себя", name.to_string_lossy()));
+    }
+    pairs.push((src, dest));
+  }
+  for (src, dest) in pairs {
+    // cp -R: папки целиком, симлинки — симлинками, как в Finder
+    let out = Command::new("cp").arg("-R").arg(src).arg(&dest).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+      return Err(String::from_utf8_lossy(&out.stderr).trim().to_owned());
+    }
+  }
+  Ok(())
+}
+
 #[derive(Serialize)]
 pub struct Stat {
   /// None — файла больше нет
@@ -161,6 +224,45 @@ mod tests {
     let ok = tauri::async_runtime::block_on(fs_write(root.into(), "src/a.txt".into(), "b".into(), Some(file.mtime)));
     assert!(ok.is_ok());
     assert_eq!(fs::read_to_string(dir.join("wt/src/a.txt")).unwrap(), "b");
+    fs::remove_dir_all(&dir).unwrap();
+  }
+
+  #[test]
+  fn create_copy_delete() {
+    let dir = std::env::temp_dir().join(format!("vibecraft-manage-{}", std::process::id()));
+    let root = dir.join("wt");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(dir.join("outside")).unwrap();
+    std::os::unix::fs::symlink(dir.join("outside"), root.join("out")).unwrap();
+    let r = || root.to_string_lossy().into_owned();
+    use tauri::async_runtime::block_on as run;
+
+    run(fs_create(r(), "src/new/a.ts".into())).unwrap();
+    assert!(root.join("src/new/a.ts").is_file());
+    assert!(run(fs_create(r(), "src/new/a.ts".into())).unwrap_err().contains("уже существует"));
+    for bad in ["../x", "out/x", "out/deep/x", "", "a/../../x"] {
+      assert!(run(fs_create(r(), bad.into())).is_err(), "{bad} должен быть запрещён");
+    }
+    assert!(!dir.join("outside/deep").exists() && !dir.join("x").exists());
+
+    // Папка и файл из «Finder» — в src; повтор — ошибка, ничего не копируется
+    let drop = dir.join("drop");
+    fs::create_dir_all(drop.join("assets")).unwrap();
+    fs::write(drop.join("assets/logo.svg"), "<svg/>").unwrap();
+    fs::write(drop.join("b.txt"), "b").unwrap();
+    let sources = || vec![drop.join("assets").to_string_lossy().into_owned(), drop.join("b.txt").to_string_lossy().into_owned()];
+    run(fs_copy(r(), "src".into(), sources())).unwrap();
+    assert_eq!(fs::read_to_string(root.join("src/assets/logo.svg")).unwrap(), "<svg/>");
+    assert!(run(fs_copy(r(), "src".into(), sources())).unwrap_err().contains("уже существует"));
+    assert!(run(fs_copy(r(), "out".into(), sources())).is_err(), "в симлинк наружу нельзя");
+    assert!(run(fs_copy(r(), "src/assets".into(), vec![root.join("src").to_string_lossy().into_owned()])).is_err());
+
+    // Симлинк удаляется сам, цель остаётся; пустой путь — не весь worktree
+    run(fs_delete(r(), "out".into())).unwrap();
+    assert!(dir.join("outside").is_dir());
+    assert!(run(fs_delete(r(), "".into())).is_err());
+    run(fs_delete(r(), "src".into())).unwrap();
+    assert!(!root.join("src").exists() && root.is_dir());
     fs::remove_dir_all(&dir).unwrap();
   }
 

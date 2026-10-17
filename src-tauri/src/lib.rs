@@ -7,12 +7,15 @@ mod ptyhost;
 mod state;
 mod usage;
 
-/// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
+/// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder; reveal — выделить файл в его папке
 #[tauri::command]
-async fn open_path(path: String, app: Option<String>) -> Result<(), String> {
+async fn open_path(path: String, app: Option<String>, reveal: Option<bool>) -> Result<(), String> {
   let mut cmd = std::process::Command::new("open");
   if let Some(app) = &app {
     cmd.args(["-a", app]);
+  }
+  if reveal == Some(true) {
+    cmd.arg("-R");
   }
   let out = cmd.arg(&path).output().map_err(|e| e.to_string())?;
   if out.status.success() {
@@ -80,6 +83,9 @@ pub fn run() {
       files::fs_list,
       files::fs_read,
       files::fs_write,
+      files::fs_create,
+      files::fs_delete,
+      files::fs_copy,
       files::fs_stat,
       files::fs_head,
       state::state_load,
