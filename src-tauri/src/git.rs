@@ -116,15 +116,42 @@ pub async fn git_branches(repo: String) -> Result<Vec<String>, String> {
     .collect())
 }
 
+/// Свежие ветки из remote. Недоступный remote (выключен VPN) висит до таймаута TCP — дольше 15 с не ждём
+#[tauri::command]
+pub async fn git_fetch(repo: String) -> Result<(), String> {
+  let (tx, rx) = mpsc::channel();
+  std::thread::spawn(move || {
+    let _ = tx.send(git(&repo, &["fetch", "--all", "--quiet"]));
+  });
+  rx.recv_timeout(Duration::from_secs(15)).map_err(|_| "remote не ответил за 15 с".to_owned())?.map(|_| ())
+}
+
+/// Локальная ветка без своих коммитов, отставшая от upstream, — берём upstream (main → origin/main).
+/// pull не делаем: локальная ветка обычно в основном worktree, там рабочая копия пользователя
+fn fresh_base(repo: &str, base: &str) -> String {
+  match git(repo, &["rev-parse", "--abbrev-ref", &format!("{base}@{{upstream}}")]) {
+    Ok(upstream) if git(repo, &["merge-base", "--is-ancestor", base, upstream.trim()]).is_ok() => upstream.trim().to_owned(),
+    _ => base.to_owned(),
+  }
+}
+
+#[derive(Serialize)]
+pub struct NewWorktree {
+  path: String,
+  /// От чего на самом деле создана ветка — от неё считается diff
+  base: Option<String>,
+}
+
 /// Новый worktree в ~/.vibecraft/worktrees/<repo>/<branch>; существующую ветку переиспользует.
 /// Новая ветка — от base (без base — от HEAD основного worktree)
 #[tauri::command]
-pub async fn git_worktree_add(repo: String, branch: String, base: Option<String>) -> Result<String, String> {
+pub async fn git_worktree_add(repo: String, branch: String, base: Option<String>) -> Result<NewWorktree, String> {
   let home = std::env::var("HOME").map_err(|e| e.to_string())?;
   let repo_name = Path::new(&repo).file_name().and_then(|n| n.to_str()).unwrap_or("repo");
   let path = format!("{home}/.vibecraft/worktrees/{repo_name}/{}", branch.replace('/', "-"));
 
   let exists = git(&repo, &["show-ref", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
+  let base = if exists { base } else { base.map(|b| fresh_base(&repo, &b)) };
   if exists {
     git(&repo, &["worktree", "add", &path, &branch])?;
   } else {
@@ -133,7 +160,7 @@ pub async fn git_worktree_add(repo: String, branch: String, base: Option<String>
     args.extend(base.as_deref());
     git(&repo, &args)?;
   }
-  Ok(path)
+  Ok(NewWorktree { path, base })
 }
 
 /// Unified diff всего, что сделано в worktree: от merge-base с base (коммиты ветки + незакоммиченное)
@@ -271,6 +298,36 @@ mod tests {
 
     let branches = tauri::async_runtime::block_on(git_branches(repo)).unwrap();
     assert_eq!(branches, ["feat/x", "main", "origin/dev"]);
+    std::fs::remove_dir_all(&tmp).ok();
+  }
+
+  #[test]
+  fn fetch_moves_stale_base_to_upstream() {
+    let tmp = std::env::temp_dir().join(format!("vibecraft-fetch-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let dir = |name: &str| tmp.join(name).to_string_lossy().into_owned();
+    let (origin, a, b) = (dir("origin.git"), dir("a"), dir("b"));
+    // Сообщение — имя клона: иначе пустые коммиты от одного родителя в ту же секунду совпадут по хешу
+    let commit = |repo: &str| git(repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", repo]).unwrap();
+    let head = |repo: &str, rev: &str| git(repo, &["rev-parse", rev]).unwrap();
+    let tmp_s = tmp.to_string_lossy().into_owned();
+    git(&tmp_s, &["init", "-q", "--bare", "-b", "main", &origin]).unwrap();
+    git(&tmp_s, &["init", "-q", "-b", "main", &a]).unwrap();
+    commit(&a);
+    git(&a, &["push", "-q", &origin, "main"]).unwrap();
+    git(&tmp_s, &["clone", "-q", &origin, &b]).unwrap();
+
+    // Кто-то запушил — у b локальные main и origin/main отстали
+    commit(&a);
+    git(&a, &["push", "-q", &origin, "main"]).unwrap();
+    tauri::async_runtime::block_on(git_fetch(b.clone())).unwrap();
+    assert_eq!(head(&b, "origin/main"), head(&a, "HEAD"), "fetch подтянул новый коммит");
+    assert_eq!(fresh_base(&b, "main"), "origin/main", "отставшая main → origin/main");
+    assert_eq!(fresh_base(&b, "origin/main"), "origin/main");
+
+    // Свои коммиты в main не теряем
+    commit(&b);
+    assert_eq!(fresh_base(&b, "main"), "main");
     std::fs::remove_dir_all(&tmp).ok();
   }
 
