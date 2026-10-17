@@ -84,7 +84,7 @@ async function onRemove() {
               v-model="token"
               type="password"
               autocomplete="off"
-              :placeholder="current?.hasToken ? 'Сохранён — оставьте пустым, чтобы не менять' : 'Вставьте токен'"
+              :placeholder="current?.hasToken ? 'Сохранён — оставьте пустым, чтобы не менять' : def.tokenOptional ? 'Необязательно' : 'Вставьте токен'"
               :aria-invalid="!!error || undefined"
             />
             <FieldDescription>{{ def.tokenHint }}</FieldDescription>
@@ -98,7 +98,7 @@ async function onRemove() {
       </form>
     </CardContent>
     <CardFooter class="gap-2">
-      <Button type="submit" :form="formId" :disabled="!!busy || !url.trim() || (!token && !current?.hasToken)">
+      <Button type="submit" :form="formId" :disabled="!!busy || !url.trim() || (!token && !current?.hasToken && !def.tokenOptional)">
         <Spinner v-if="busy === 'save'" data-icon="inline-start" />
         Сохранить и проверить
       </Button>

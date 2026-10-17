@@ -230,6 +230,47 @@ pub async fn git_clone(url: String, dir: String, name: String) -> Result<String,
   Ok(path)
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Commit {
+  hash: String,
+  short: String,
+  subject: String,
+  author: String,
+  /// ISO 8601
+  date: String,
+  /// Ветки и теги на коммите: `main`, `origin/main`, `tag: v1.0`
+  refs: Vec<String>,
+}
+
+/// Поля через \x1f, записи через \x1e: в теме коммита они не встречаются
+const LOG_FORMAT: &str = "--format=%H%x1f%h%x1f%s%x1f%an%x1f%aI%x1f%D%x1e";
+
+fn parse_log(out: &str) -> Vec<Commit> {
+  out
+    .split('\x1e')
+    .filter_map(|record| {
+      let fields: Vec<&str> = record.trim_start_matches('\n').split('\x1f').collect();
+      let [hash, short, subject, author, date, refs] = fields[..] else { return None };
+      let refs = refs
+        .split(", ")
+        .map(|r| r.strip_prefix("HEAD -> ").unwrap_or(r))
+        .filter(|r| !r.is_empty() && *r != "HEAD")
+        .map(str::to_owned)
+        .collect();
+      Some(Commit { hash: hash.into(), short: short.into(), subject: subject.into(), author: author.into(), date: date.into(), refs })
+    })
+    .collect()
+}
+
+/// Последние коммиты ветки worktree. В репозитории без коммитов — пусто, а не ошибка git
+#[tauri::command]
+pub async fn git_log(path: String, limit: u32) -> Result<Vec<Commit>, String> {
+  if git(&path, &["rev-parse", "--verify", "-q", "HEAD"]).is_err() {
+    return Ok(vec![]);
+  }
+  Ok(parse_log(&git(&path, &["log", "-n", &limit.to_string(), LOG_FORMAT])?))
+}
+
 #[tauri::command]
 pub async fn git_status(path: String) -> Result<Status, String> {
   let changes = git(&path, &["status", "--porcelain"])?.lines().count();
@@ -328,6 +369,28 @@ mod tests {
     // Свои коммиты в main не теряем
     commit(&b);
     assert_eq!(fresh_base(&b, "main"), "main");
+    std::fs::remove_dir_all(&tmp).ok();
+  }
+
+  #[test]
+  fn log_of_empty_and_committed_repo() {
+    let tmp = std::env::temp_dir().join(format!("vibecraft-log-{}", std::process::id()));
+    let repo = tmp.to_string_lossy().into_owned();
+    std::fs::create_dir_all(&tmp).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]).unwrap();
+    let log = |limit| tauri::async_runtime::block_on(git_log(repo.clone(), limit)).unwrap();
+    assert_eq!(log(10), [], "без коммитов — пусто");
+
+    for msg in ["first", "second: тема"] {
+      git(&repo, &["-c", "user.name=Иван", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", msg]).unwrap();
+    }
+    git(&repo, &["tag", "v1"]).unwrap();
+    let commits = log(10);
+    assert_eq!(commits.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(), ["second: тема", "first"]);
+    assert_eq!(commits[0].refs, ["main", "tag: v1"]);
+    assert_eq!(commits[0].author, "Иван");
+    assert!(commits[0].hash.starts_with(&commits[0].short));
+    assert_eq!(log(1).len(), 1);
     std::fs::remove_dir_all(&tmp).ok();
   }
 

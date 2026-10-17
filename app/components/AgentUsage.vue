@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { UsageWindow } from '@/utils/usage'
+import { TriangleAlertIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useIntervalFn } from '@vueuse/core'
 import { cn } from '@/lib/utils'
@@ -43,21 +44,32 @@ const barColor = (percent: number) => percent >= 90 ? 'bg-destructive' : percent
 </script>
 
 <template>
-  <div v-if="programs.length" class="flex flex-col gap-2 px-2 py-1 text-xs text-muted-foreground">
-    <div v-for="[p, name] in programs" :key="p" class="flex flex-col gap-1">
+  <!-- В строку: живёт первой колонкой футера. Не влезшая программа переносится на вторую строку и скрыта целиком -->
+  <div v-if="programs.length" class="flex h-4 flex-wrap content-start items-center gap-x-4 overflow-hidden">
+    <div v-for="[p, name] in programs" :key="p" class="flex items-center gap-2">
       <span class="font-medium text-sidebar-foreground/70">{{ name }}</span>
-      <span v-if="usage[p]?.error" class="truncate" :title="usage[p].error">{{ usage[p].error }}</span>
+      <Tooltip v-if="usage[p]?.error">
+        <TooltipTrigger as-child>
+          <span class="flex">
+            <TriangleAlertIcon class="size-3.5 text-warning" />
+            <span class="sr-only">{{ usage[p].error }}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" class="max-w-80">
+          {{ usage[p].error }}
+        </TooltipContent>
+      </Tooltip>
       <Tooltip v-for="w in usage[p]?.windows" :key="w.label" :disabled="!w.resetsAt">
         <TooltipTrigger as-child>
-          <div class="grid grid-cols-[3.5rem_1fr_2.5rem] items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <span>{{ w.label }}</span>
-            <div class="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <div class="h-1.5 w-10 overflow-hidden rounded-full bg-muted" aria-hidden="true">
               <div :class="cn('h-full rounded-full transition-[width]', barColor(w.percent))" :style="{ width: `${Math.min(w.percent, 100)}%` }" />
             </div>
-            <span class="text-right tabular-nums">{{ Math.round(w.percent) }}%</span>
+            <span class="tabular-nums">{{ Math.round(w.percent) }}%</span>
           </div>
         </TooltipTrigger>
-        <TooltipContent side="right">
+        <TooltipContent side="top">
           Сброс {{ w.resetsAt && ago(w.resetsAt) }}
         </TooltipContent>
       </Tooltip>

@@ -1,8 +1,8 @@
 import type { Component } from 'vue'
-import { GitMergeIcon, TicketIcon } from '@lucide/vue'
+import { GitMergeIcon, GitPullRequestIcon, TicketIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 
-export type IntegrationId = 'youtrack' | 'gitlab'
+export type IntegrationId = 'youtrack' | 'gitlab' | 'github'
 
 export interface IntegrationDef {
   id: IntegrationId
@@ -15,6 +15,10 @@ export interface IntegrationDef {
   meName: (me: any) => string
   // Несекретные параметры — в ~/.vibecraft/state.json, токен — в credentials.json
   options?: { key: string, label: string, default: string, placeholder?: string }[]
+  // false — своей страницы и ярлыка в сайдбаре нет: PR и issues GitHub — на странице проекта
+  page?: false
+  // Токен можно не вводить: GitHub без него берёт токен gh CLI (для Enterprise — по сохранённому адресу)
+  tokenOptional?: true
 }
 
 export const INTEGRATIONS: IntegrationDef[] = [
@@ -42,6 +46,17 @@ export const INTEGRATIONS: IntegrationDef[] = [
     meName: me => me.name || me.username,
     options: [{ key: 'cloneDir', label: 'Папка для клонирования репозиториев', default: '', placeholder: 'Спросим при первом клонировании' }],
   },
+  {
+    id: 'github',
+    name: 'GitHub',
+    icon: GitPullRequestIcon,
+    urlPlaceholder: 'https://github.com',
+    tokenHint: 'Не нужен, если выполнен gh auth login — возьмём токен GitHub CLI. Иначе: Settings → Developer settings → Personal access tokens, scope: repo',
+    mePath: '/user',
+    meName: me => me.name || me.login,
+    page: false,
+    tokenOptional: true,
+  },
 ]
 
 // Токены живут в ~/.vibecraft/credentials.json на стороне Rust — сюда приходит только адрес и факт наличия токена
@@ -53,12 +68,14 @@ async function reload(id: IntegrationId) {
 }
 INTEGRATIONS.forEach(i => reload(i.id))
 
-// Что показывает основная область; workspace при этом не выгружается — терминалы живут
-export const useView = () => useState<'workspace' | 'settings' | IntegrationId>('view', () => 'workspace')
+// Что показывает основная область; workspace при этом не выгружается — терминалы живут.
+// repo — страница активного проекта: коммиты, PR/MR и issues
+export const useView = () => useState<'workspace' | 'settings' | 'repo' | IntegrationId>('view', () => 'workspace')
 
 export function useIntegrations() {
-  // Ярлыки в сайдбаре — только у заполненных интеграций
-  const configured = computed(() => INTEGRATIONS.filter(i => stored.value[i.id]?.url && stored.value[i.id]?.hasToken))
+  const configured = computed(() => INTEGRATIONS.filter(i => stored.value[i.id]?.url && (stored.value[i.id]?.hasToken || i.tokenOptional)))
+  // Ярлыки в сайдбаре — только у заполненных интеграций со своей страницей
+  const pages = computed(() => configured.value.filter(i => i.page !== false))
 
   function option(id: IntegrationId, key: string) {
     const def = INTEGRATIONS.find(i => i.id === id)?.options?.find(o => o.key === key)
@@ -89,5 +106,5 @@ export function useIntegrations() {
     return def.meName(await api(id, def.mePath))
   }
 
-  return { stored, configured, option, setOption, save, remove, api, whoami }
+  return { stored, configured, pages, option, setOption, save, remove, api, whoami }
 }
