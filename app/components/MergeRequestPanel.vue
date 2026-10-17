@@ -6,22 +6,23 @@ import { useEventListener, useIntervalFn } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 
 const { active } = useProjects()
-const { configured, stored, option } = useIntegrations()
+const { configured, option } = useIntegrations()
 const { statusIn, sendToAgent } = useTerminals()
-const { projectFor, mrFor, defaultBranch, createMR, failedJobLogs } = useGitLab()
+// PR GitHub и MR GitLab — одна панель: хостинг определяется по remote
+const { remote, forge, api, terms, loadRemote } = useForge()
 const { links, issue: fetchIssue, comment, setState, issueUrl } = useYouTrack()
 const { openSettings } = useSettings()
 
-const hasGitLab = computed(() => configured.value.some(i => i.id === 'gitlab'))
 const hasYouTrack = computed(() => configured.value.some(i => i.id === 'youtrack'))
 const issueId = computed(() => active.value && hasYouTrack.value ? links.value[active.value.wt.path] : undefined)
 
-const project = ref<string>()
 const mr = ref<MergeRequest>()
 // Задачи, уже переведённые после слияния: повторно не трогаем, даже если статус потом сменили руками
 const movedOnMerge = persisted<string[]>('merged-issues', [])
 const loading = ref(false)
 const error = ref<string>()
+// worktree, для которого PR/MR уже запрошен: до ответа хостинга форму не показываем
+const loadedFor = ref<string>()
 
 const title = ref('')
 const target = ref('')
@@ -29,10 +30,10 @@ const creating = ref(false)
 // Форму заполняем один раз на worktree — перечитывание по фокусу не затирает набранное
 let prefilledFor: string | undefined
 
-async function prefill(path: string, p: string) {
+async function prefill(path: string, defaultBranch: Promise<string>) {
   prefilledFor = path
   title.value = active.value?.wt.branch ?? ''
-  target.value = await defaultBranch(p)
+  target.value = await defaultBranch
   if (issueId.value) {
     const id = issueId.value
     title.value = await fetchIssue(id).then(i => `${id}: ${i.summary}`, () => `${id}: ${title.value}`)
@@ -41,17 +42,21 @@ async function prefill(path: string, p: string) {
 
 async function load() {
   const wt = active.value?.wt
-  if (!wt || !hasGitLab.value) return
+  if (!wt?.git) return
   loading.value = true
   try {
-    const p = await projectFor(wt.path)
-    const found = p && wt.branch ? await mrFor(p, wt.branch) : undefined
-    // Пока ждали GitLab, пользователь переключил worktree
+    // remote — заново при каждой загрузке: его могли добавить или сменить из терминала, не уводя фокус с окна
+    await loadRemote()
+    const f = forge.value
+    const a = api.value
+    if (!f || !a || wt.path !== active.value?.wt.path) return
+    const found = wt.branch ? await a.mrFor(f.path, wt.branch) : undefined
+    // Пока ждали хостинг, пользователь переключил worktree
     if (wt.path !== active.value?.wt.path) return
-    project.value = p
     mr.value = found
     error.value = undefined
-    if (p && !found && prefilledFor !== wt.path) await prefill(wt.path, p)
+    loadedFor.value = wt.path
+    if (!found && prefilledFor !== wt.path) await prefill(wt.path, a.defaultBranch(f.path))
     const id = issueId.value
     if (found?.state === 'merged' && id && option('youtrack', 'doneState') && !movedOnMerge.value.includes(id)) {
       movedOnMerge.value.push(id)
@@ -69,10 +74,10 @@ async function load() {
 // Сброс до загрузки — иначе мелькнёт MR предыдущего worktree
 watch(() => active.value?.wt.path, () => {
   mr.value = undefined
-  project.value = undefined
   error.value = undefined
+  loadedFor.value = undefined
 })
-watch([() => active.value?.wt.path, () => active.value && statusIn(active.value.wt.path), hasGitLab], load, { immediate: true })
+watch([() => active.value?.wt.path, () => active.value && statusIn(active.value.wt.path), () => api.value && forge.value?.url], load, { immediate: true })
 useEventListener(window, 'focus', load)
 // Пока пайплайн идёт — подтягиваем его статус
 const PIPELINE_RUNNING = ['created', 'waiting_for_resource', 'preparing', 'pending', 'running']
@@ -85,6 +90,24 @@ const PIPELINE_LABEL: Record<string, string> = {
   skipped: 'Пайплайн пропущен',
   manual: 'Ждёт ручного запуска',
 }
+
+// Почему показать нечего; undefined — показываем PR/MR или форму его создания
+const empty = computed(() => {
+  const a = active.value
+  const f = forge.value
+  if (!a) return { title: 'Worktree не выбран', description: 'Выберите worktree в сайдбаре' }
+  if (!a.wt.git) return { title: 'Папка без git', description: `${terms.value.mr} создаётся из ветки git-репозитория` }
+  if (remote.value === undefined) return { title: 'Загружаю…', description: '' }
+  if (!f) return { title: 'Нет remote', description: 'Добавьте его: git remote add origin <url>' }
+  if (!api.value) {
+    return f.kind === 'github' || f.kind === 'gitlab'
+      ? { title: `${f.name} не подключён`, description: `Укажите адрес и токен ${f.name} в настройках`, settings: true }
+      : { title: `${f.name} не поддерживается`, description: 'PR и MR работают с GitHub и GitLab; свой GitLab подключается в настройках', settings: true }
+  }
+  if (error.value) return { title: `Не удалось получить ${terms.value.mr}`, description: error.value }
+  if (loadedFor.value !== a.wt.path) return { title: 'Загружаю…', description: '' }
+  if (!a.wt.branch) return { title: 'Detached HEAD', description: `${terms.value.mr} создаётся из ветки` }
+})
 
 // Статус задачи из настроек YouTrack; пустой — не меняем
 async function moveIssue(id: string, key: 'reviewState' | 'doneState') {
@@ -106,12 +129,13 @@ const fixing = ref(false)
 async function fixPipeline() {
   const wt = active.value?.wt
   const current = mr.value
-  if (!wt || !current?.pipeline || !project.value) return
+  const f = forge.value
+  if (!wt || !current?.pipeline || !f || !api.value) return
   fixing.value = true
   try {
-    const logs = await failedJobLogs(project.value, current.pipeline.id)
+    const logs = await api.value.failedJobLogs(f.path, current.pipeline.id)
     const text = [
-      `Пайплайн MR !${current.iid} упал: ${current.pipeline.url}`,
+      `Пайплайн ${terms.value.mr} ${terms.value.ref}${current.iid} упал: ${current.pipeline.url}`,
       logs || 'Упавших job\'ов в пайплайне не нашлось — посмотри его по ссылке.',
       'Разберись в причине и почини.',
     ].join('\n\n')
@@ -128,23 +152,25 @@ async function fixPipeline() {
 
 async function create() {
   const wt = active.value?.wt
-  if (!wt?.branch || !project.value) return
+  const f = forge.value
+  if (!wt?.branch || !f || !api.value) return
+  const { mr: term, mrName, ref } = terms.value
   creating.value = true
   try {
-    // GitLab создаёт MR только из ветки, которая уже есть на сервере
+    // GitLab и GitHub создают MR/PR только из ветки, которая уже есть на сервере
     const status = await invoke<{ ahead: number | null }>('git_status', { path: wt.path })
     if (status.ahead !== 0) await invoke('git_push', { path: wt.path })
     const id = issueId.value
-    const created = await createMR(project.value, {
+    const created = await api.value.createMR(f.path, {
       source: wt.branch,
       target: target.value.trim(),
       title: title.value.trim(),
       description: id ? `Задача: ${issueUrl(id)}` : '',
     })
     mr.value = created
-    toast.success(`MR !${created.iid} создан`)
+    toast.success(`${term} ${ref}${created.iid} создан`)
     if (id) {
-      await comment(id, `Merge request: ${created.url}`).catch(e => toast.error(`Комментарий в YouTrack не добавлен: ${e}`))
+      await comment(id, `${mrName}: ${created.url}`).catch(e => toast.error(`Комментарий в YouTrack не добавлен: ${e}`))
       await moveIssue(id, 'reviewState')
     }
   }
@@ -160,34 +186,23 @@ async function create() {
 <template>
   <div class="flex h-full flex-col">
     <div class="flex h-8 shrink-0 items-center gap-2 text-xs text-muted-foreground">
-      <span v-if="project" class="truncate font-mono">{{ project }}</span>
-      <Button variant="ghost" size="icon-xs" class="ml-auto" :disabled="loading || !active || !hasGitLab" @click="load">
+      <span v-if="api" class="truncate font-mono">{{ forge?.path }}</span>
+      <Button variant="ghost" size="icon-xs" class="ml-auto" :disabled="loading || !active?.wt.git" @click="load">
         <Spinner v-if="loading" />
         <RefreshCwIcon v-else />
         <span class="sr-only">Обновить</span>
       </Button>
     </div>
 
-    <Empty v-if="!active || !hasGitLab || error || !project || !active.wt.branch" class="flex-1">
+    <Empty v-if="empty" class="flex-1">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <GitMergeIcon />
         </EmptyMedia>
-        <EmptyTitle>
-          {{ !active ? 'Worktree не выбран'
-            : !hasGitLab ? 'GitLab не подключён'
-              : error ? 'Не удалось получить MR'
-                : loading ? 'Загружаю…'
-                  : !project ? 'Remote не на GitLab'
-                    : 'Detached HEAD' }}
-        </EmptyTitle>
-        <EmptyDescription>
-          {{ !active ? 'Выберите worktree в сайдбаре'
-            : !hasGitLab ? 'Укажите адрес и токен GitLab в настройках'
-              : error ?? (loading ? '' : !project ? `Remote репозитория указывает не на ${stored.gitlab?.url}` : 'MR создаётся из ветки') }}
-        </EmptyDescription>
+        <EmptyTitle>{{ empty.title }}</EmptyTitle>
+        <EmptyDescription>{{ empty.description }}</EmptyDescription>
       </EmptyHeader>
-      <EmptyContent v-if="active && !hasGitLab">
+      <EmptyContent v-if="empty.settings">
         <Button variant="outline" @click="openSettings('integrations')">
           Открыть настройки
         </Button>
@@ -196,7 +211,7 @@ async function create() {
 
     <div v-else-if="mr" class="flex flex-col gap-3">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <span class="font-mono">!{{ mr.iid }}</span>
+        <span class="font-mono">{{ terms.ref }}{{ mr.iid }}</span>
         <Badge v-if="mr.state === 'merged'" variant="secondary">Влит</Badge>
         <Badge v-if="mr.draft" variant="outline">Draft</Badge>
         <span class="ml-auto">{{ ago(mr.updated) }}</span>
@@ -219,7 +234,7 @@ async function create() {
       </Button>
       <Button variant="outline" @click="openExternal(mr.url)">
         <ExternalLinkIcon data-icon="inline-start" />
-        Открыть в GitLab
+        Открыть в {{ forge?.name }}
       </Button>
     </div>
 
@@ -229,19 +244,19 @@ async function create() {
           <FieldLabel for="mr-title">Заголовок</FieldLabel>
           <Input id="mr-title" v-model="title" />
           <FieldDescription v-if="issueId">
-            Из задачи {{ issueId }}; в задачу уйдёт комментарий со ссылкой на MR{{ option('youtrack', 'reviewState') && `, статус — ${option('youtrack', 'reviewState')}` }}
+            Из задачи {{ issueId }}; в задачу уйдёт комментарий со ссылкой на {{ terms.mr }}{{ option('youtrack', 'reviewState') && `, статус — ${option('youtrack', 'reviewState')}` }}
           </FieldDescription>
         </Field>
         <Field>
           <FieldLabel for="mr-target">Целевая ветка</FieldLabel>
           <Input id="mr-target" v-model="target" class="font-mono" />
-          <FieldDescription>Из {{ active.wt.branch }}; неопубликованная ветка будет запушена</FieldDescription>
+          <FieldDescription>Из {{ active?.wt.branch }}; неопубликованная ветка будет запушена</FieldDescription>
         </Field>
       </FieldGroup>
       <Button type="submit" :disabled="creating || !title.trim() || !target.trim()">
         <Spinner v-if="creating" data-icon="inline-start" />
         <GitMergeIcon v-else data-icon="inline-start" />
-        Создать MR
+        Создать {{ terms.mr }}
       </Button>
     </form>
   </div>

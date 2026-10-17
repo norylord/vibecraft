@@ -16,7 +16,9 @@ defineProps<{ hidden: boolean }>()
 
 const { toggleSidebar } = useSidebar()
 const view = useView()
-const { configured: integrations } = useIntegrations()
+const { pages: integrations } = useIntegrations()
+// Вкладка PR/MR называется по хостингу активного проекта
+const { terms } = useForge()
 const paletteOpen = useState('palette', () => false)
 // ResizablePanel пробрасывает методы SplitterPanel (collapse/expand)
 const panel = useTemplateRef<InstanceType<typeof SplitterPanel>>('panel')
@@ -342,7 +344,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
               Задача
             </TabsTrigger>
             <TabsTrigger value="mr">
-              MR
+              {{ terms.mr }}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="diff" class="min-h-0">
