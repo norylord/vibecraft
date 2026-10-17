@@ -5,6 +5,7 @@ mod integrations;
 mod pty;
 mod ptyhost;
 mod state;
+mod usage;
 
 /// Открыть путь в приложении (`open -a WebStorm`) или, без app, в Finder
 #[tauri::command]
@@ -28,6 +29,12 @@ async fn installed(programs: Vec<String>) -> Vec<bool> {
   programs.iter().map(|p| std::env::split_paths(path).any(|dir| dir.join(p).is_file())).collect()
 }
 
+/// Перезапуск после установки обновления — хост терминалов живёт отдельно, агенты не прерываются
+#[tauri::command]
+fn restart(app: tauri::AppHandle) {
+  app.restart();
+}
+
 /// Запуск в роли хоста терминалов (`vibecraft --pty-host`) вместо окна приложения
 pub fn pty_host() -> bool {
   if std::env::args().nth(1).as_deref() != Some(ptyhost::ARG) {
@@ -40,6 +47,7 @@ pub fn pty_host() -> bool {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_dialog::init())
     .manage(pty::Ptys::default())
@@ -50,6 +58,7 @@ pub fn run() {
       pty::pty_kill,
       git::git_root,
       git::git_worktrees,
+      git::git_branches,
       git::git_worktree_add,
       git::git_worktree_remove,
       git::git_diff,
@@ -60,6 +69,7 @@ pub fn run() {
       git::git_clone,
       open_path,
       installed,
+      restart,
       integrations::integration_get,
       integrations::integration_save,
       integrations::integration_delete,
@@ -72,6 +82,8 @@ pub fn run() {
       files::fs_head,
       state::state_load,
       state::state_save,
+      usage::usage_claude,
+      usage::usage_codex,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

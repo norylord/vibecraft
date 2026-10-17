@@ -62,20 +62,21 @@ export function useYouTrack() {
 
   const issueUrl = (id: string) => `${stored.value.youtrack?.url}/issue/${id}`
 
+  // Задача для промпта агенту: заголовок, ссылка, описание
+  const describe = (issue: Issue) =>
+    [`Задача ${issue.id}: ${issue.summary}\n${issueUrl(issue.id)}`, issue.description.trim()].filter(Boolean).join('\n\n')
+
   // Worktree под задачу (существующий для этой ветки переиспользуем) + агент с промптом из задачи.
   // Возвращает 'clipboard', если агент не принимает промпт аргументом и его надо вставить руками
   // message — стартовое сообщение от пользователя: с чего начать, особенно если в задаче пусто
-  async function start(issue: Issue, repo: string, branch: string, agent: AgentPreset, message = '') {
+  async function start(issue: Issue, repo: string, branch: string, base: string, agent: AgentPreset, message = '') {
     repoFor.value[issue.project] = repo
     await refresh(repo)
-    const path = worktrees.value[repo]?.find(w => w.branch === branch)?.path ?? await createWorktree(repo, branch)
+    const path = worktrees.value[repo]?.find(w => w.branch === branch)?.path ?? await createWorktree(repo, branch, base)
     activeWorktree.value = path
     links.value[path] = issue.id
 
-    const prompt = [`Задача ${issue.id}: ${issue.summary}\n${issueUrl(issue.id)}`, issue.description, message]
-      .map(part => part.trim())
-      .filter(Boolean)
-      .join('\n\n')
+    const prompt = [describe(issue), message.trim()].filter(Boolean).join('\n\n')
     await invoke('save_prompt', { name: issue.id, text: prompt })
     if (acceptsPrompt(agent.command)) {
       openTerminal(path, agent, issue.id)
@@ -86,5 +87,5 @@ export function useYouTrack() {
     return 'clipboard' as const
   }
 
-  return { issues, issue, comment, setState, issueUrl, start, links, repoFor }
+  return { issues, issue, comment, setState, issueUrl, describe, start, links, repoFor }
 }

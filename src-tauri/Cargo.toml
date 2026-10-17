@@ -1,6 +1,6 @@
 [package]
 name = "vibecraft"
-version = "0.2.0"
+version = "0.6.0"
 description = "Agentic Development Environment"
 authors = ["aleksandrpletnev"]
 license = ""
@@ -26,4 +26,5 @@ tauri-plugin-log = "2"
 portable-pty = "0.9"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
 reqwest = { version = "0.13", features = ["json"] }

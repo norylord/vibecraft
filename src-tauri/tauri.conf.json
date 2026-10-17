@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Vibecraft",
-  "version": "0.2.0",
+  "version": "0.6.0",
   "identifier": "studio.lince.vibecraft",
   "build": {
     "frontendDist": "../dist",
@@ -56,6 +56,16 @@
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "13.0"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQwODJGRTlERjExNEY1NEYKUldSUDlSVHhuZjZDMER3MDdEc1ZkV2xZMU0xWE5FZi85TTFUUkMvZitLSU9mcVlteUFPME1NeUEK",
+      "endpoints": [
+        "https://github.com/norylord/vibecraft/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true
     }
   }
 }

@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { useIntervalFn } from '@vueuse/core'
 import 'vue-sonner/style.css'
 
 const view = useView()
 const { isDark } = useSettings()
 applyAppearance()
+
+// При старте и раз в 6 часов — Vibecraft держат открытым днями. В dev нечего обновлять: нет .app
+const { checkUpdate } = useUpdater()
+if (!import.meta.dev) useIntervalFn(checkUpdate, 6 * 3600_000, { immediateCallback: true })
 </script>
 
 <template>
@@ -17,4 +22,5 @@ applyAppearance()
     <GitLabPage v-else-if="view === 'gitlab'" />
   </SidebarProvider>
   <Toaster :theme="isDark ? 'dark' : 'light'" rich-colors />
+  <UpdateDialog />
 </template>

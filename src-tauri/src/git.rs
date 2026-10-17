@@ -104,9 +104,22 @@ pub async fn git_worktrees(repo: String) -> Result<Vec<Worktree>, String> {
   Ok(parse_worktrees(&git(&repo, &["worktree", "list", "--porcelain"])?))
 }
 
-/// Новый worktree в ~/.vibecraft/worktrees/<repo>/<branch>; существующую ветку переиспользует
+/// Локальные и remote-ветки (без origin/HEAD) — от чего можно создать worktree
 #[tauri::command]
-pub async fn git_worktree_add(repo: String, branch: String) -> Result<String, String> {
+pub async fn git_branches(repo: String) -> Result<Vec<String>, String> {
+  let refs = git(&repo, &["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"])?;
+  Ok(refs
+    .lines()
+    .filter(|r| !r.ends_with("/HEAD"))
+    .filter_map(|r| r.strip_prefix("refs/heads/").or_else(|| r.strip_prefix("refs/remotes/")))
+    .map(str::to_owned)
+    .collect())
+}
+
+/// Новый worktree в ~/.vibecraft/worktrees/<repo>/<branch>; существующую ветку переиспользует.
+/// Новая ветка — от base (без base — от HEAD основного worktree)
+#[tauri::command]
+pub async fn git_worktree_add(repo: String, branch: String, base: Option<String>) -> Result<String, String> {
   let home = std::env::var("HOME").map_err(|e| e.to_string())?;
   let repo_name = Path::new(&repo).file_name().and_then(|n| n.to_str()).unwrap_or("repo");
   let path = format!("{home}/.vibecraft/worktrees/{repo_name}/{}", branch.replace('/', "-"));
@@ -115,7 +128,10 @@ pub async fn git_worktree_add(repo: String, branch: String) -> Result<String, St
   if exists {
     git(&repo, &["worktree", "add", &path, &branch])?;
   } else {
-    git(&repo, &["worktree", "add", "-b", &branch, &path])?;
+    // --no-track: от origin/main git иначе сделает его upstream, и git_push запушит не туда
+    let mut args = vec!["worktree", "add", "--no-track", "-b", &branch, &path];
+    args.extend(base.as_deref());
+    git(&repo, &args)?;
   }
   Ok(path)
 }
@@ -239,6 +255,22 @@ mod tests {
     assert!(Path::new(&path).join(".git").exists());
     assert_eq!(clone(&url).unwrap(), path, "тот же репозиторий — переиспользуем");
     assert!(clone("/elsewhere/other.git").is_err(), "папка занята другим репозиторием");
+    std::fs::remove_dir_all(&tmp).ok();
+  }
+
+  #[test]
+  fn lists_local_and_remote_branches() {
+    let tmp = std::env::temp_dir().join(format!("vibecraft-branches-{}", std::process::id()));
+    let repo = tmp.to_string_lossy().into_owned();
+    std::fs::create_dir_all(&tmp).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]).unwrap();
+    git(&repo, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"]).unwrap();
+    git(&repo, &["branch", "feat/x"]).unwrap();
+    git(&repo, &["update-ref", "refs/remotes/origin/dev", "HEAD"]).unwrap();
+    git(&repo, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev"]).unwrap();
+
+    let branches = tauri::async_runtime::block_on(git_branches(repo)).unwrap();
+    assert_eq!(branches, ["feat/x", "main", "origin/dev"]);
     std::fs::remove_dir_all(&tmp).ok();
   }
 

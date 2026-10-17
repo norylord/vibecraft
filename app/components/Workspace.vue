@@ -4,7 +4,7 @@ import type { AgentStatus, TerminalTab } from '@/composables/useTerminals'
 import type { ActionId } from '@/utils/hotkeys'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { toast } from 'vue-sonner'
-import { BotIcon, CodeXmlIcon, FileCodeIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
+import { BotIcon, CodeXmlIcon, FileCodeIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, ScanSearchIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
@@ -21,7 +21,7 @@ const paletteOpen = useState('palette', () => false)
 // ResizablePanel пробрасывает методы SplitterPanel (collapse/expand)
 const panel = useTemplateRef<InstanceType<typeof SplitterPanel>>('panel')
 
-const { projects, activeWorktree, active, label } = useProjects()
+const { projects, worktrees, activeWorktree, active, label } = useProjects()
 const { terminals, activeTab, openTerminal: open, closeTerminal } = useTerminals()
 const { files, closeFile } = useEditor()
 const quickOpen = ref(false)
@@ -45,6 +45,34 @@ const { settings, isDark, binding, shortcut, openSettings, zoomBy } = useSetting
 function launch(agent: AgentPreset) {
   view.value = 'workspace'
   open(activeWorktree.value, agent)
+}
+
+const { links, issue: fetchIssue, describe } = useYouTrack()
+// Активная вкладка — агент в worktree: его работу можно отдать на ревью
+const activeAgent = computed(() => active.value && visibleTerminals.value.find(t => t.key === activeTab.value && t.command))
+const reviewers = computed(() => agents.value.filter(a => acceptsPrompt(a.command)))
+
+// Ревьюер — новый агент в том же worktree: код не трогает, замечания пишет в своей вкладке
+async function review(agent: AgentPreset) {
+  const { repo, wt } = active.value!
+  const name = `review-${activeAgent.value!.key}`
+  const id = links.value[wt.path]
+  const task = id && await fetchIssue(id).then(describe, () => `Задача ${id}`)
+  // Первый worktree репозитория — основной: его ветка и есть база
+  const base = worktrees.value[repo]?.[0]?.branch
+  const text = [
+    `Сделай код-ревью работы в этом worktree (ветка ${wt.branch ?? 'detached HEAD'}).`,
+    task,
+    `Смотри коммиты ветки${base && base !== wt.branch ? ` относительно ${base} (git diff ${base}...HEAD)` : ''} и незакоммиченные изменения.`,
+    'Проверь соответствие задаче, баги, граничные случаи, безопасность и лишний код. Код не меняй — выдай список замечаний с файлами и строками, от критичных к мелким.',
+  ].filter(Boolean).join('\n\n')
+  try {
+    await invoke('save_prompt', { name, text })
+    open(wt.path, agent, name)
+  }
+  catch (e) {
+    toast.error(String(e))
+  }
 }
 
 // Без app — в Finder; редактор задаётся в настройках
@@ -163,7 +191,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <Tabs v-model="activeTab" class="h-full gap-0">
           <div v-if="visibleTabs.length" class="flex h-9 shrink-0 items-center gap-1 px-2">
             <TabsList variant="line">
-              <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center">
+              <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center" @click.middle="closeTerminal(tab.key)">
                 <TabsTrigger :value="tab.key">
                   <AgentStatusIcon :status="tab.status">
                     <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
@@ -175,7 +203,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                   <span class="sr-only">Закрыть терминал</span>
                 </Button>
               </div>
-              <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center">
+              <div v-for="file in visibleFiles" :key="file.key" class="group/tab flex items-center" @click.middle="closeFile(file)">
                 <TabsTrigger :value="file.key" :title="file.path">
                   <FileCodeIcon />
                   {{ baseName(file.path) }}
@@ -220,6 +248,24 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </template>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu v-if="active?.wt.git && activeAgent && reviewers.length">
+              <DropdownMenuTrigger as-child>
+                <Button variant="ghost" size="sm" class="ml-auto">
+                  <ScanSearchIcon data-icon="inline-start" />
+                  Ревью
+                </Button>
+              </DropdownMenuTrigger>
+              <!-- Как у «+»: фокус уходит в терминал ревьюера, а не обратно на кнопку -->
+              <DropdownMenuContent align="end" @close-auto-focus.prevent>
+                <DropdownMenuLabel>Отдать на ревью</DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem v-for="agent in reviewers" :key="agent.name" @select="review(agent)">
+                    <BotIcon />
+                    {{ agent.name }}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

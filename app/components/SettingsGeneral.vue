@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { getVersion } from '@tauri-apps/api/app'
+import { computedAsync } from '@vueuse/core'
+
 const { settings } = useSettings()
+const { checking, checkUpdate } = useUpdater()
+const version = computedAsync(getVersion)
 </script>
 
 <template>
@@ -23,6 +28,17 @@ const { settings } = useSettings()
         <FieldDescription>Сворачивать правую панель, когда задача из YouTrack запускает агента</FieldDescription>
       </FieldContent>
       <Switch id="settings-collapse" v-model="settings.collapsePanelOnStart" />
+    </Field>
+    <FieldSeparator />
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel>Обновления</FieldLabel>
+        <FieldDescription>Vibecraft {{ version }}. Новые версии проверяются при запуске и раз в 6 часов</FieldDescription>
+      </FieldContent>
+      <Button variant="outline" :disabled="checking" @click="checkUpdate(true)">
+        <Spinner v-if="checking" data-icon="inline-start" />
+        Проверить
+      </Button>
     </Field>
   </FieldGroup>
 </template>

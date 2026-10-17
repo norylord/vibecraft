@@ -1,11 +1,25 @@
 <script setup lang="ts">
 import type { Worktree } from '@/composables/useProjects'
-import { EllipsisIcon, FolderGit2Icon, FolderIcon, GitBranchIcon, GitBranchPlusIcon, PlusIcon, RefreshCwIcon, SearchIcon, Settings2Icon, Trash2Icon, XIcon } from '@lucide/vue'
+import { ChevronRightIcon, EllipsisIcon, EyeIcon, EyeOffIcon, FolderGit2Icon, FolderIcon, GitBranchIcon, GitBranchPlusIcon, PlusIcon, RefreshCwIcon, SearchIcon, Settings2Icon, Trash2Icon, XIcon } from '@lucide/vue'
 import { useEventListener } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 
 const paletteOpen = useState('palette', () => false)
-const { projects, worktrees, activeWorktree, refresh, refreshAll, addProject, removeProject, createWorktree, removeWorktree } = useProjects()
+const { projects, hidden, collapsed, worktrees, activeWorktree, active, refresh, refreshAll, addProject, removeProject, toggleHidden, toggleCollapsed, createWorktree, removeWorktree } = useProjects()
+
+const query = ref('')
+const showHidden = ref(false)
+// Поиск идёт и по скрытым: иначе спрятанный проект не найти.
+// Проект с открытым worktree не прячем, иначе тот пропадёт из сайдбара
+const shown = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (q) return projects.value.filter(p => baseName(p).toLowerCase().includes(q))
+  return showHidden.value ? projects.value : projects.value.filter(p => !hidden.value.includes(p) || p === active.value?.repo)
+})
+// Последний скрытый вернули: кнопка исчезла, а без сброса следующее «Скрыть» ничего не спрячет
+watch(() => hidden.value.length, (n) => {
+  if (!n) showHidden.value = false
+})
 const view = useView()
 const { shortcut, openSettings } = useSettings()
 const { configured: integrations } = useIntegrations()
@@ -22,6 +36,7 @@ useEventListener(window, 'focus', refreshAll)
 
 const newWorktreeFor = ref<string>()
 const branch = ref('')
+const base = ref('')
 const branchError = ref<string>()
 const creating = ref(false)
 
@@ -34,7 +49,7 @@ function startNewWorktree(repo: string) {
 async function submitWorktree() {
   creating.value = true
   try {
-    await createWorktree(newWorktreeFor.value!, branch.value.trim())
+    await createWorktree(newWorktreeFor.value!, branch.value.trim(), base.value)
     newWorktreeFor.value = undefined
   }
   catch (e) {
@@ -82,11 +97,19 @@ async function confirmRemoval() {
           <span class="sr-only">Добавить проект</span>
         </SidebarGroupAction>
         <SidebarGroupContent>
+          <SidebarInput v-if="projects.length" v-model="query" type="search" placeholder="Найти проект" aria-label="Найти проект" class="mb-1" />
           <SidebarMenu v-if="projects.length">
-            <SidebarMenuItem v-for="repo in projects" :key="repo">
-              <SidebarMenuButton :title="repo" @click="select(repo)">
+            <SidebarMenuItem v-for="repo in shown" :key="repo" :class="{ 'opacity-60': hidden.includes(repo) }">
+              <!-- Основной worktree есть в списке ниже, поэтому клик по проекту только сворачивает -->
+              <SidebarMenuButton
+                :title="repo"
+                :is-active="view === 'workspace' && collapsed.includes(repo) && active?.repo === repo"
+                :aria-expanded="!collapsed.includes(repo)"
+                @click="toggleCollapsed(repo)"
+              >
                 <FolderGit2Icon />
-                <span>{{ baseName(repo) }}</span>
+                <span class="truncate">{{ baseName(repo) }}</span>
+                <ChevronRightIcon class="ml-auto transition-transform" :class="{ 'rotate-90': !collapsed.includes(repo) }" />
               </SidebarMenuButton>
               <DropdownMenu>
                 <DropdownMenuTrigger as-child>
@@ -108,6 +131,10 @@ async function confirmRemoval() {
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
+                    <DropdownMenuItem @select="toggleHidden(repo)">
+                      <component :is="hidden.includes(repo) ? EyeIcon : EyeOffIcon" />
+                      {{ hidden.includes(repo) ? 'Показать' : 'Скрыть' }}
+                    </DropdownMenuItem>
                     <DropdownMenuItem variant="destructive" @select="removeProject(repo)">
                       <XIcon />
                       Убрать из списка
@@ -115,7 +142,7 @@ async function confirmRemoval() {
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <SidebarMenuSub>
+              <SidebarMenuSub v-if="!collapsed.includes(repo)">
                 <SidebarMenuSubItem v-for="(wt, i) in worktrees[repo]" :key="wt.path">
                   <SidebarMenuSubButton as="button" class="w-full" :title="wt.path" :is-active="view === 'workspace' && wt.path === activeWorktree" @click="select(wt.path)">
                     <AgentStatusIcon :status="statusIn(wt.path)">
@@ -136,6 +163,15 @@ async function confirmRemoval() {
                   </Button>
                 </SidebarMenuSubItem>
               </SidebarMenuSub>
+            </SidebarMenuItem>
+            <SidebarMenuItem v-if="query.trim() && !shown.length">
+              <p class="px-2 py-1.5 text-xs text-muted-foreground">Ничего не найдено</p>
+            </SidebarMenuItem>
+            <SidebarMenuItem v-if="hidden.length && !query.trim()">
+              <SidebarMenuButton class="text-muted-foreground" @click="showHidden = !showHidden">
+                <component :is="showHidden ? EyeOffIcon : EyeIcon" />
+                <span>{{ showHidden ? 'Спрятать скрытые' : `Скрытые: ${hidden.length}` }}</span>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
           <Empty v-else>
@@ -171,6 +207,7 @@ async function confirmRemoval() {
       </SidebarGroup>
     </SidebarContent>
     <SidebarFooter>
+      <AgentUsage />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton :is-active="view === 'settings'" @click="openSettings()">
@@ -189,7 +226,7 @@ async function confirmRemoval() {
         <DialogHeader>
           <DialogTitle>Новый worktree</DialogTitle>
           <DialogDescription>
-            {{ baseName(newWorktreeFor ?? '') }}: ветка создастся от текущего HEAD, если её ещё нет
+            {{ baseName(newWorktreeFor ?? '') }}: если ветка уже есть — переиспользуем
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
@@ -198,9 +235,13 @@ async function confirmRemoval() {
             <Input id="branch" v-model="branch" placeholder="feat/new-thing" autofocus :aria-invalid="!!branchError || undefined" />
             <FieldError :errors="[branchError]" />
           </Field>
+          <Field>
+            <FieldLabel for="base">От ветки</FieldLabel>
+            <BaseBranchSelect id="base" v-model="base" :repo="newWorktreeFor ?? ''" />
+          </Field>
         </FieldGroup>
         <DialogFooter>
-          <Button type="submit" :disabled="creating || !branch.trim()">
+          <Button type="submit" :disabled="creating || !branch.trim() || !base">
             <Spinner v-if="creating" data-icon="inline-start" />
             Создать
           </Button>
