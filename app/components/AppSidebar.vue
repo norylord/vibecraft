@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Worktree } from '@/composables/useProjects'
-import { EllipsisIcon, FolderGit2Icon, GitBranchIcon, GitBranchPlusIcon, PlusIcon, RefreshCwIcon, SearchIcon, Settings2Icon, Trash2Icon, XIcon } from '@lucide/vue'
+import { EllipsisIcon, FolderGit2Icon, FolderIcon, GitBranchIcon, GitBranchPlusIcon, PlusIcon, RefreshCwIcon, SearchIcon, Settings2Icon, Trash2Icon, XIcon } from '@lucide/vue'
 import { useEventListener } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 
@@ -97,7 +97,7 @@ async function confirmRemoval() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start">
                   <DropdownMenuGroup>
-                    <DropdownMenuItem @select="startNewWorktree(repo)">
+                    <DropdownMenuItem v-if="worktrees[repo]?.[0]?.git" @select="startNewWorktree(repo)">
                       <GitBranchPlusIcon />
                       Новый worktree
                     </DropdownMenuItem>
@@ -119,9 +119,9 @@ async function confirmRemoval() {
                 <SidebarMenuSubItem v-for="(wt, i) in worktrees[repo]" :key="wt.path">
                   <SidebarMenuSubButton as="button" class="w-full" :title="wt.path" :is-active="view === 'workspace' && wt.path === activeWorktree" @click="select(wt.path)">
                     <AgentStatusIcon :status="statusIn(wt.path)">
-                      <GitBranchIcon />
+                      <component :is="wt.git ? GitBranchIcon : FolderIcon" />
                     </AgentStatusIcon>
-                    <span>{{ wt.branch ?? 'detached HEAD' }}</span>
+                    <span>{{ worktreeName(wt) }}</span>
                   </SidebarMenuSubButton>
                   <!-- i > 0: основной worktree репозитория удалить нельзя -->
                   <Button
@@ -144,7 +144,7 @@ async function confirmRemoval() {
                 <FolderGit2Icon />
               </EmptyMedia>
               <EmptyTitle>Проектов пока нет</EmptyTitle>
-              <EmptyDescription>Добавьте git-репозиторий, чтобы запускать агентов в worktree</EmptyDescription>
+              <EmptyDescription>Добавьте папку проекта; в git-репозитории агенты работают в отдельных worktree</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button variant="outline" @click="addProject">

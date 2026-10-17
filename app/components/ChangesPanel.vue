@@ -14,7 +14,8 @@ const diff = ref('')
 const status = ref<{ changes: number, ahead: number | null, remote: string | null }>({ changes: 0, ahead: null, remote: null })
 const loading = ref(false)
 const error = ref<string>()
-const files = computed(() => parseDiff(diff.value))
+// У папки без git diff нет — не показываем и прежний, от другого worktree
+const files = computed(() => active.value?.wt.git ? parseDiff(diff.value) : [])
 const totals = computed(() => files.value.reduce(
   (t, f) => ({ added: t.added + f.added, removed: t.removed + f.removed }),
   { added: 0, removed: 0 },
@@ -28,7 +29,7 @@ const base = computed(() => {
 
 async function load() {
   const path = active.value?.wt.path
-  if (!path) return
+  if (!path || !active.value?.wt.git) return
   loading.value = true
   try {
     const [d, s] = await Promise.all([
@@ -102,7 +103,7 @@ const lineClass = (line: string) => cn('px-3 whitespace-pre', {
         <span class="text-destructive">−{{ totals.removed }}</span>
       </template>
       <span v-if="base" class="truncate">от {{ base }}</span>
-      <Button variant="ghost" size="icon-xs" class="ml-auto" :disabled="loading || !active" @click="load">
+      <Button variant="ghost" size="icon-xs" class="ml-auto" :disabled="loading || !active?.wt.git" @click="load">
         <Spinner v-if="loading" />
         <RefreshCwIcon v-else />
         <span class="sr-only">Обновить</span>
@@ -115,8 +116,8 @@ const lineClass = (line: string) => cn('px-3 whitespace-pre', {
           <EmptyMedia variant="icon">
             <GitCompareIcon />
           </EmptyMedia>
-          <EmptyTitle>{{ !active ? 'Worktree не выбран' : error ? 'Не удалось получить diff' : 'Нет изменений' }}</EmptyTitle>
-          <EmptyDescription>{{ error ?? 'Здесь появятся правки агента: коммиты ветки, незакоммиченное и новые файлы' }}</EmptyDescription>
+          <EmptyTitle>{{ !active ? 'Worktree не выбран' : !active.wt.git ? 'Папка без git' : error ? 'Не удалось получить diff' : 'Нет изменений' }}</EmptyTitle>
+          <EmptyDescription>{{ active && !active.wt.git ? 'Выполните git init в терминале и обновите проект в сайдбаре — появятся изменения, коммиты и worktree' : error ?? 'Здесь появятся правки агента: коммиты ветки, незакоммиченное и новые файлы' }}</EmptyDescription>
         </EmptyHeader>
       </Empty>
 
@@ -143,7 +144,7 @@ const lineClass = (line: string) => cn('px-3 whitespace-pre', {
       </template>
     </div>
 
-    <form v-if="active" class="flex shrink-0 flex-col gap-2 border-t pt-2" @submit.prevent="gitAction('commit')">
+    <form v-if="active?.wt.git" class="flex shrink-0 flex-col gap-2 border-t pt-2" @submit.prevent="gitAction('commit')">
       <Field>
         <FieldLabel for="commit-message" class="sr-only">Сообщение коммита</FieldLabel>
         <Textarea

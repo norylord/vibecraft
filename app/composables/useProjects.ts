@@ -2,13 +2,15 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { toast } from 'vue-sonner'
 
-export interface Worktree { path: string, branch: string | null }
+// git: false — папка без git: один «worktree» — она сама, без веток
+export interface Worktree { path: string, branch: string | null, git: boolean }
 
 const projects = persisted<string[]>('projects', [])
 const worktrees = ref<Record<string, Worktree[]>>({})
 const activeWorktree = ref<string>()
 
 export const baseName = (path: string) => path.split('/').pop() ?? path
+export const worktreeName = (wt: Worktree) => wt.git ? wt.branch ?? 'detached HEAD' : 'без git'
 
 export function useProjects() {
   const { closeTerminalsIn } = useTerminals()
@@ -25,7 +27,7 @@ export function useProjects() {
   function label(path: string) {
     for (const repo of projects.value) {
       const wt = worktrees.value[repo]?.find(w => w.path === path)
-      if (wt) return `${baseName(repo)} / ${wt.branch ?? 'detached HEAD'}`
+      if (wt) return `${baseName(repo)} / ${worktreeName(wt)}`
     }
     return baseName(path)
   }
@@ -41,7 +43,7 @@ export function useProjects() {
 
   const refreshAll = () => Promise.all(projects.value.map(refresh))
 
-  // Любая папка внутри репозитория → проект по корню; ошибки git пробрасываются
+  // Любая папка внутри репозитория → проект по корню, папка без git — сама; ошибки git пробрасываются
   async function addPath(dir: string) {
     const repo = await invoke<string>('git_root', { path: dir })
     if (!projects.value.includes(repo)) projects.value.push(repo)
@@ -51,7 +53,7 @@ export function useProjects() {
   }
 
   async function addProject() {
-    const dir = await open({ directory: true, title: 'Выберите git-репозиторий' })
+    const dir = await open({ directory: true, title: 'Выберите папку проекта' })
     if (dir) await addPath(dir).catch(e => toast.error(String(e)))
   }
 

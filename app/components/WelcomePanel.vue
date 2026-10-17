@@ -21,7 +21,7 @@ const steps = computed(() => [
   {
     icon: FolderGit2Icon,
     title: 'Добавьте проект',
-    description: 'Git-репозиторий, в worktree которого будут работать агенты',
+    description: 'Папка с кодом; в git-репозитории агенты работают в отдельных worktree',
     done: projects.value.length > 0,
     action: { label: 'Добавить проект', run: addProject },
   },
