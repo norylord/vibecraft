@@ -22,7 +22,7 @@ watch(() => hidden.value.length, (n) => {
 })
 const view = useView()
 const { shortcut, openSettings } = useSettings()
-const { configured: integrations } = useIntegrations()
+const { pages: integrations } = useIntegrations()
 
 function select(path: string) {
   activeWorktree.value = path
@@ -80,7 +80,8 @@ async function confirmRemoval() {
 </script>
 
 <template>
-  <Sidebar variant="inset">
+  <!-- Высота — до футера (AppFooter, h-7); по умолчанию сайдбар fixed на всю высоту окна -->
+  <Sidebar variant="inset" class="h-[calc(100svh-(--spacing(7)))]">
     <!-- pt-9: место под «светофор» macOS; пустая часть шапки таскает окно -->
     <SidebarHeader data-tauri-drag-region class="pt-9">
       <Button variant="outline" class="justify-start text-muted-foreground" @click="paletteOpen = true">
@@ -207,7 +208,6 @@ async function confirmRemoval() {
       </SidebarGroup>
     </SidebarContent>
     <SidebarFooter>
-      <AgentUsage />
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton :is-active="view === 'settings'" @click="openSettings()">

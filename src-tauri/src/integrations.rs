@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -78,16 +79,55 @@ pub async fn integration_delete(id: String) -> Result<(), String> {
   store(&id, None)
 }
 
-/// JSON-запрос к API интеграции; path — от корня сервиса, например `/api/v4/user`.
-/// YouTrack и GitLab оба принимают токен как Bearer
+const GITHUB: &str = "https://github.com";
+
+/// Токен GitHub CLI (`gh auth login`) для хоста адреса: GitHub работает и без настройки в Vibecraft
+fn gh_token(url: &str) -> Option<String> {
+  let host = url.split("://").nth(1)?.split('/').next()?;
+  let out = Command::new("gh")
+    .args(["auth", "token", "--hostname", host.strip_prefix("api.").unwrap_or(host)])
+    .env("PATH", crate::git::user_path())
+    .output()
+    .ok()?;
+  let token = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+  (out.status.success() && !token.is_empty()).then_some(token)
+}
+
+/// Сохранённые адрес и токен; у GitHub без токена — токен gh CLI
+fn credentials(id: &str) -> Result<Stored, String> {
+  let stored = load(id);
+  if let Some(s) = stored.as_ref().filter(|s| !s.token.is_empty()) {
+    return Ok(s.clone());
+  }
+  if id != "github" {
+    return Err("Интеграция не настроена — откройте настройки".into());
+  }
+  let url = stored.map(|s| s.url).filter(|u| !u.is_empty()).unwrap_or_else(|| GITHUB.into());
+  let token = gh_token(&url).ok_or("GitHub не подключён: выполните gh auth login или укажите токен в настройках")?;
+  Ok(Stored { url, token })
+}
+
+/// API GitHub — на api.github.com, у Enterprise — /api/v3 на его хосте; в настройках адрес сайта
+fn api_base(id: &str, url: &str) -> String {
+  match (id, url) {
+    ("github", "https://github.com" | "https://api.github.com") => "https://api.github.com".into(),
+    ("github", _) if !url.ends_with("/api/v3") => format!("{url}/api/v3"),
+    _ => url.into(),
+  }
+}
+
+/// JSON-запрос к API интеграции; path — от корня API, например `/api/v4/user` у GitLab, `/user` у GitHub.
+/// YouTrack, GitLab и GitHub принимают токен как Bearer
 #[tauri::command]
 pub async fn api_request(id: String, path: String, method: Option<String>, body: Option<Value>) -> Result<Value, String> {
-  let stored = load(&id).filter(|s| !s.token.is_empty()).ok_or("Интеграция не настроена — откройте настройки")?;
+  let stored = credentials(&id)?;
   let method = reqwest::Method::from_bytes(method.as_deref().unwrap_or("GET").as_bytes()).map_err(|e| e.to_string())?;
   let mut req = reqwest::Client::new()
-    .request(method, format!("{}{path}", stored.url))
+    .request(method, format!("{}{path}", api_base(&id, &stored.url)))
     .bearer_auth(&stored.token)
     .header("Accept", "application/json")
+    // Без User-Agent GitHub отвечает 403
+    .header("User-Agent", concat!("vibecraft/", env!("CARGO_PKG_VERSION")))
     .timeout(Duration::from_secs(20));
   if let Some(body) = body {
     req = req.json(&body);
@@ -128,5 +168,14 @@ mod tests {
     assert!(load("youtrack").is_none());
     assert_eq!(load("gitlab").unwrap().token, "t2", "удаление не трогает другие интеграции");
     fs::remove_dir_all(&home).ok();
+  }
+
+  #[test]
+  fn github_api_base() {
+    assert_eq!(api_base("github", "https://github.com"), "https://api.github.com");
+    assert_eq!(api_base("github", "https://api.github.com"), "https://api.github.com");
+    assert_eq!(api_base("github", "https://ghe.corp"), "https://ghe.corp/api/v3");
+    assert_eq!(api_base("github", "https://ghe.corp/api/v3"), "https://ghe.corp/api/v3");
+    assert_eq!(api_base("gitlab", "https://gitlab.com"), "https://gitlab.com", "остальные — как есть");
   }
 }

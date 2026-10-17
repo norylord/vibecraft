@@ -1,6 +1,9 @@
+import type { RepoIssue } from './useForge'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 
+// Общий для GitLab и GitHub (PR приводится к нему в useGitHub): state — opened | merged | closed,
+// pipeline.id — пайплайн GitLab или коммит, чьи проверки показываем, у GitHub; статусы — словарь GitLab
 export interface MergeRequest {
   iid: number
   title: string
@@ -11,7 +14,8 @@ export interface MergeRequest {
   target: string
   project: string
   updated: string
-  pipeline?: { id: number, status: string, url: string }
+  author?: string
+  pipeline?: { id: number | string, status: string, url: string }
 }
 
 function toMR(raw: any): MergeRequest {
@@ -25,6 +29,7 @@ function toMR(raw: any): MergeRequest {
     target: raw.target_branch,
     project: raw.references?.full?.replace(/!\d+$/, '') ?? '',
     updated: raw.updated_at,
+    author: raw.author?.username,
     pipeline: raw.head_pipeline && { id: raw.head_pipeline.id, status: raw.head_pipeline.status, url: raw.head_pipeline.web_url },
   }
 }
@@ -41,16 +46,9 @@ export interface GitLabProject {
 const enc = encodeURIComponent
 
 export function useGitLab() {
-  const { api, stored, option, setOption } = useIntegrations()
+  const { api, option, setOption } = useIntegrations()
   const { addPath } = useProjects()
   const gl = <T = any>(path: string, method?: string, body?: unknown) => api<T>('gitlab', `/api/v4${path}`, method, body)
-
-  // Путь проекта GitLab по remote worktree; undefined — GitLab не настроен или remote не на нём
-  async function projectFor(worktree: string) {
-    const remote = await invoke<string | null>('git_remote_url', { path: worktree })
-    const url = stored.value.gitlab?.url
-    return remote && url ? gitlabProject(remote, url) : undefined
-  }
 
   // Открытый, а если его нет — влитый MR из ветки; с пайплайном (его отдаёт только запрос одного MR)
   async function mrFor(project: string, branch: string) {
@@ -71,7 +69,7 @@ export function useGitLab() {
     }))
 
   // Хвосты логов упавших job'ов пайплайна — для агента
-  async function failedJobLogs(project: string, pipeline: number) {
+  async function failedJobLogs(project: string, pipeline: number | string) {
     const jobs = await gl<any[]>(`/projects/${enc(project)}/pipelines/${pipeline}/jobs?scope[]=failed`)
     const logs = await Promise.all(jobs.map(async job =>
       `## ${job.stage} / ${job.name}\n${job.web_url}\n\n\`\`\`\n${jobLogTail(await gl<string>(`/projects/${enc(project)}/jobs/${job.id}/trace`))}\n\`\`\``))
@@ -85,6 +83,20 @@ export function useGitLab() {
       : `scope=all&reviewer_username=${enc((await gl('/user')).username)}`
     return (await gl<any[]>(`/merge_requests?state=opened&per_page=50&${query}`)).map(toMR)
   }
+
+  // Открытые MR и issues проекта — для страницы проекта и счётчиков футера
+  const openMRs = async (project: string) =>
+    toPage((await gl<any[]>(`/projects/${enc(project)}/merge_requests?state=opened&order_by=updated_at&per_page=${FORGE_PAGE}`)).map(toMR))
+
+  const openIssues = async (project: string) =>
+    toPage((await gl<any[]>(`/projects/${enc(project)}/issues?state=opened&order_by=updated_at&per_page=${FORGE_PAGE}`)).map((i): RepoIssue => ({
+      iid: i.iid,
+      title: i.title,
+      url: i.web_url,
+      author: i.author?.username ?? '',
+      labels: i.labels ?? [],
+      updated: i.updated_at,
+    })))
 
   // Проекты, где я участник, — последние по активности
   const projects = async (): Promise<GitLabProject[]> =>
@@ -115,5 +127,5 @@ export function useGitLab() {
     return addPath(path)
   }
 
-  return { projectFor, mrFor, defaultBranch, createMR, failedJobLogs, myMRs, projects, cloneDir, clonePath, pickCloneDir, clone }
+  return { mrFor, defaultBranch, createMR, failedJobLogs, myMRs, openMRs, openIssues, projects, cloneDir, clonePath, pickCloneDir, clone }
 }
