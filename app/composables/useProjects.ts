@@ -17,6 +17,17 @@ const bases = persisted<Record<string, string>>('worktree-bases', {})
 const lastBase = persisted<Record<string, string>>('last-bases', {})
 
 export const baseName = (path: string) => path.split('/').pop() ?? path
+
+// git fetch по репозиторию: диалог запускает его при открытии, создание worktree дожидается того же.
+// Результат — текст ошибки; минуту переиспользуется, чтобы недоступный remote не ждать дважды
+const fetches: Record<string, { at: number, error: Promise<string | undefined> }> = {}
+export function fetchRemote(repo: string) {
+  const last = fetches[repo]
+  if (last && Date.now() - last.at < 60_000) return last.error
+  const error = invoke('git_fetch', { repo }).then(() => undefined, e => String(e))
+  fetches[repo] = { at: Date.now(), error }
+  return error
+}
 export const worktreeName = (wt: Worktree) => wt.git ? wt.branch ?? 'detached HEAD' : 'без git'
 
 const without = (list: string[], repo: string) => list.filter(p => p !== repo)
@@ -86,10 +97,13 @@ export function useProjects() {
   const toggleHidden = (repo: string) => toggle(hidden, repo)
   const toggleCollapsed = (repo: string) => toggle(collapsed, repo)
 
-  // Ошибки git пробрасываются: их показывает диалог, который вызвал
+  // Ошибки git пробрасываются: их показывает диалог, который вызвал. Недоступный remote — не ошибка:
+  // ветка создаётся от того, что есть локально. База может смениться на свежую (main → origin/main)
   async function createWorktree(repo: string, branch: string, base: string) {
-    const path = await invoke<string>('git_worktree_add', { repo, branch, base })
-    bases.value[path] = base
+    const fetchError = await fetchRemote(repo)
+    const { path, base: from } = await invoke<{ path: string, base: string | null }>('git_worktree_add', { repo, branch, base })
+    if (fetchError) toast.warning('Не удалось обновить ветки из remote — worktree создан от локальных', { description: fetchError })
+    bases.value[path] = from ?? base
     lastBase.value[repo] = base
     await refresh(repo)
     activeWorktree.value = path
