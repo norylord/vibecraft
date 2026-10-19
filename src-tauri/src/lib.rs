@@ -4,6 +4,7 @@ mod hooks;
 mod integrations;
 mod pty;
 mod ptyhost;
+mod ssh;
 mod state;
 mod usage;
 
@@ -88,6 +89,7 @@ pub fn run() {
       files::fs_copy,
       files::fs_stat,
       files::fs_head,
+      ssh::ssh_local,
       state::state_load,
       state::state_save,
       usage::usage_claude,
@@ -104,6 +106,10 @@ pub fn run() {
       // Без хуков агенты работают, просто без статусов — не роняем приложение
       if let Err(e) = hooks::install() {
         log::error!("не удалось установить хуки агентов: {e}");
+      }
+      // Без askpass.sh сохранённые пароли SSH не подставятся — ssh спросит их в терминале
+      if let Err(e) = ssh::install() {
+        log::error!("не удалось установить askpass для SSH: {e}");
       }
       // PATH из login-shell считаем заранее, чтобы первый git-запрос не ждал
       std::thread::spawn(|| git::user_path());

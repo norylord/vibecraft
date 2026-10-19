@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import type { SettingsTab } from '@/composables/useSettings'
-import { BotIcon, KeyboardIcon, PaletteIcon, PlugIcon, SlidersHorizontalIcon } from '@lucide/vue'
+import { BotIcon, KeyboardIcon, PaletteIcon, PlugIcon, ServerIcon, SlidersHorizontalIcon } from '@lucide/vue'
 import { INTEGRATIONS } from '@/composables/useIntegrations'
 
 const { tab } = useSettings()
@@ -11,6 +11,7 @@ const SECTIONS: { id: SettingsTab, label: string, icon: Component, description: 
   { id: 'appearance', label: 'Внешний вид', icon: PaletteIcon, description: 'Тема, масштаб, шрифт терминала' },
   { id: 'hotkeys', label: 'Горячие клавиши', icon: KeyboardIcon, description: 'Сочетания для действий Vibecraft' },
   { id: 'agents', label: 'Агенты', icon: BotIcon, description: 'CLI-агенты, которых можно запускать в worktree' },
+  { id: 'ssh', label: 'SSH', icon: ServerIcon, description: 'Серверы для подключения из вкладки терминала. Пароли хранятся в ~/.vibecraft/credentials.json (доступ только у вашего пользователя)' },
   { id: 'integrations', label: 'Интеграции', icon: PlugIcon, description: 'Токены хранятся в ~/.vibecraft/credentials.json (доступ только у вашего пользователя) и не покидают Rust-часть приложения. Подключённые интеграции появляются ярлыками в сайдбаре' },
 ]
 const current = computed(() => SECTIONS.find(s => s.id === tab.value)!)
@@ -49,6 +50,9 @@ const current = computed(() => SECTIONS.find(s => s.id === tab.value)!)
             </TabsContent>
             <TabsContent value="agents">
               <SettingsAgents />
+            </TabsContent>
+            <TabsContent value="ssh">
+              <SettingsSsh />
             </TabsContent>
             <TabsContent value="integrations" class="flex flex-col gap-4">
               <IntegrationCard v-for="def in INTEGRATIONS" :key="def.id" :def="def" />

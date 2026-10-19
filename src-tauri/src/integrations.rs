@@ -95,6 +95,10 @@ fn gh_token(url: &str) -> Option<String> {
 
 /// Сохранённые адрес и токен; у GitHub без токена — токен gh CLI
 fn credentials(id: &str) -> Result<Stored, String> {
+  // Пароли SSH-серверов (useSsh) лежат здесь же, но в HTTP-запросы уходить не должны: адреса у них нет
+  if id.starts_with("ssh-") {
+    return Err("Интеграция не настроена — откройте настройки".into());
+  }
   let stored = load(id);
   if let Some(s) = stored.as_ref().filter(|s| !s.token.is_empty()) {
     return Ok(s.clone());
@@ -167,6 +171,9 @@ mod tests {
     block_on(integration_delete("youtrack".into())).unwrap();
     assert!(load("youtrack").is_none());
     assert_eq!(load("gitlab").unwrap().token, "t2", "удаление не трогает другие интеграции");
+
+    block_on(integration_save("ssh-1".into(), String::new(), Some("pw".into()))).unwrap();
+    assert!(credentials("ssh-1").is_err(), "пароль SSH не уходит в api_request");
     fs::remove_dir_all(&home).ok();
   }
 
