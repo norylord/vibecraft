@@ -5,7 +5,7 @@ import type { ActionId } from '@/utils/hotkeys'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { ask } from '@tauri-apps/plugin-dialog'
 import { toast } from 'vue-sonner'
-import { BotIcon, CodeXmlIcon, FileCodeIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, ScanSearchIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
+import { BotIcon, CodeXmlIcon, FileCodeIcon, FolderOpenIcon, PanelLeftIcon, PanelRightIcon, PlusIcon, ScanSearchIcon, ServerIcon, Settings2Icon, SquareTerminalIcon, SunMoonIcon, XIcon, ZoomInIcon, ZoomOutIcon } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { SplitterPanel } from 'reka-ui'
 import { useEventListener } from '@vueuse/core'
@@ -46,7 +46,7 @@ const tabAt = (e: Event) => (e.target as Element).closest<HTMLElement>('[data-ta
 // Несохранённый файл спросит сам при закрытии; агентов, закрываемых пачкой, подтверждаем одним вопросом
 async function closeTabs(keys: string[]) {
   const running = terminals.value.filter(t => keys.includes(t.key) && t.command && !t.exited).length
-  if (keys.length > 1 && running && !await ask(`Будут остановлены агенты: ${running}`, { title: 'Закрыть вкладки?', kind: 'warning', okLabel: 'Закрыть', cancelLabel: 'Отмена' })) return
+  if (keys.length > 1 && running && !await ask(`Будут остановлены агенты и SSH-сессии: ${running}`, { title: 'Закрыть вкладки?', kind: 'warning', okLabel: 'Закрыть', cancelLabel: 'Отмена' })) return
   for (const key of keys) {
     const file = files.value.find(f => f.key === key)
     if (file) await closeFile(file)
@@ -60,6 +60,7 @@ function openTerminal() {
 }
 
 const { runnable: agents } = useAgents()
+const { servers, connect } = useSsh()
 const { settings, isDark, binding, shortcut, openSettings, zoomBy } = useSettings()
 // Агентов запускаем только в worktree — в домашней папке им нечего делать
 function launch(agent: AgentPreset) {
@@ -69,7 +70,7 @@ function launch(agent: AgentPreset) {
 
 const { links, issue: fetchIssue, describe } = useYouTrack()
 // Активная вкладка — агент в worktree: его работу можно отдать на ревью
-const activeAgent = computed(() => active.value && visibleTerminals.value.find(t => t.key === activeTab.value && t.command))
+const activeAgent = computed(() => active.value && visibleTerminals.value.find(t => t.key === activeTab.value && t.command && !t.ssh))
 const reviewers = computed(() => agents.value.filter(a => acceptsPrompt(a.command)))
 
 // Ревьюер — новый агент в том же worktree: код не трогает, замечания пишет в своей вкладке
@@ -216,7 +217,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                   <div v-for="tab in visibleTerminals" :key="tab.key" class="group/tab flex items-center" :data-tab="tab.key" @click.middle="closeTerminal(tab.key)">
                     <TabsTrigger :value="tab.key">
                       <AgentStatusIcon :status="tab.status">
-                        <component :is="tab.command ? BotIcon : SquareTerminalIcon" />
+                        <component :is="tab.ssh ? ServerIcon : tab.command ? BotIcon : SquareTerminalIcon" />
                       </AgentStatusIcon>
                       {{ tab.title }}
                     </TabsTrigger>
@@ -253,6 +254,23 @@ useEventListener('keydown', (e: KeyboardEvent) => {
                         Терминал
                         <DropdownMenuShortcut>{{ shortcut('terminal') }}</DropdownMenuShortcut>
                       </DropdownMenuItem>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <ServerIcon />
+                          SSH
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          <DropdownMenuItem v-for="s in servers" :key="s.id" @select="connect(s)">
+                            <ServerIcon />
+                            {{ s.name || s.host }}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator v-if="servers.length" />
+                          <DropdownMenuItem @select="openSettings('ssh')">
+                            <Settings2Icon />
+                            Настроить серверы…
+                          </DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
                     </DropdownMenuGroup>
                     <template v-if="active">
                       <DropdownMenuSeparator />
@@ -436,6 +454,16 @@ useEventListener('keydown', (e: KeyboardEvent) => {
         <CommandItem value="agents-settings" @select="run(() => openSettings('agents'))">
           <Settings2Icon />
           Настроить агентов
+        </CommandItem>
+      </CommandGroup>
+      <CommandGroup heading="SSH">
+        <CommandItem v-for="s in servers" :key="s.id" :value="`ssh-${s.id} ${s.name} ${s.host}`" @select="run(() => connect(s))">
+          <ServerIcon />
+          Подключиться к {{ s.name || s.host }}
+        </CommandItem>
+        <CommandItem value="ssh-settings" @select="run(() => openSettings('ssh'))">
+          <Settings2Icon />
+          Настроить SSH-серверы
         </CommandItem>
       </CommandGroup>
       <CommandGroup v-if="active" heading="Worktree">

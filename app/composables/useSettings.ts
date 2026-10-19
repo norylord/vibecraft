@@ -17,7 +17,7 @@ const settings = persisted('settings', {
   hotkeys: {} as Partial<Record<ActionId, string>>,
 })
 
-export type SettingsTab = 'general' | 'appearance' | 'hotkeys' | 'agents' | 'integrations'
+export type SettingsTab = 'general' | 'appearance' | 'hotkeys' | 'agents' | 'ssh' | 'integrations'
 
 const systemDark = useMediaQuery('(prefers-color-scheme: dark)')
 const isDark = computed(() => settings.value.theme === 'system' ? systemDark.value : settings.value.theme === 'dark')

@@ -6,7 +6,8 @@ export type AgentStatus = 'working' | 'waiting' | 'done'
 // command — что напечатать в shell после старта (агент); без неё — просто терминал.
 // tracked — агент шлёт статусы хуками; workingOnEnter — у него нет хука «начал работу» (Codex).
 // name — исходный заголовок (title меняет сам терминал); exited — агент вышел, остался shell;
-// restored — вкладка из прошлого запуска: переподключаемся к сессии в хосте, ничего не запуская
+// restored — вкладка из прошлого запуска: переподключаемся к сессии в хосте, ничего не запуская;
+// ssh — подключение к серверу (useSsh): command — ssh, а не агент
 export interface TerminalTab {
   key: string
   title: string
@@ -18,6 +19,7 @@ export interface TerminalTab {
   workingOnEnter?: boolean
   exited?: boolean
   restored?: boolean
+  ssh?: boolean
 }
 
 // Программа агента без префикса из переменных: `FOO=1 claude --model x` → claude
@@ -54,7 +56,7 @@ const activeTab = ref<string>()
 // У dev-сборки свой список, как и свой хост
 const saved = persisted<Omit<TerminalTab, 'title'>[]>(import.meta.dev ? 'terminals-dev' : 'terminals', [])
 watch(
-  () => terminals.value.map(({ key, name, cwd, command, status, tracked, workingOnEnter }) => ({ key, name, cwd, command, status, tracked, workingOnEnter })),
+  () => terminals.value.map(({ key, name, cwd, command, status, tracked, workingOnEnter, ssh }) => ({ key, name, cwd, command, status, tracked, workingOnEnter, ssh })),
   tabs => (saved.value = tabs),
 )
 let restored = false
@@ -70,6 +72,12 @@ export function useTerminals() {
   function openTerminal(cwd?: string, agent?: AgentPreset, prompt?: string) {
     const name = agent?.name ?? 'Терминал'
     const tab: TerminalTab = { key: crypto.randomUUID(), title: name, name, cwd, ...(agent && withHooks(agent.command, prompt)) }
+    terminals.value.push(tab)
+    activeTab.value = tab.key
+  }
+
+  function openSsh(cwd: string | undefined, name: string, command: string) {
+    const tab: TerminalTab = { key: crypto.randomUUID(), title: name, name, cwd, command, ssh: true }
     terminals.value.push(tab)
     activeTab.value = tab.key
   }
@@ -108,5 +116,5 @@ export function useTerminals() {
     return true
   }
 
-  return { terminals, activeTab, openTerminal, closeTerminal, closeTerminalsIn, statusIn, sendToAgent }
+  return { terminals, activeTab, openTerminal, openSsh, closeTerminal, closeTerminalsIn, statusIn, sendToAgent }
 }
