@@ -31,6 +31,11 @@ const { filterState } = useCommand()
   >
     <InputGroup class="bg-input/20 dark:bg-input/30 h-8!">
       <ListboxFilter
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        writingsuggestions="false"
         v-bind="{ ...forwardedProps, ...$attrs }"
         v-model="filterState.search"
         data-slot="command-input"
