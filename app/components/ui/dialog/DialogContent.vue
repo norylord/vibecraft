@@ -31,23 +31,25 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
 <template>
   <DialogPortal>
     <DialogOverlay />
-    <DialogContent
-      data-slot="dialog-content"
-      v-bind="{ ...$attrs, ...forwarded }"
-      :class="cn('bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-w-[calc(100%-2rem)] gap-4 rounded-xl p-4 text-xs/relaxed ring-1 duration-100 sm:max-w-sm fixed inset-0 m-auto h-fit z-50 w-full outline-none', props.class)"
-    >
-      <slot />
-
-      <DialogClose
-        v-if="showCloseButton"
-        data-slot="dialog-close"
-        as-child
+    <div class="pointer-events-none fixed inset-0 z-50 grid place-items-center">
+      <DialogContent
+        data-slot="dialog-content"
+        v-bind="{ ...$attrs, ...forwarded }"
+        :class="cn('bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 ring-foreground/10 grid max-w-[calc(100%-2rem)] gap-4 rounded-xl p-4 text-xs/relaxed ring-1 duration-100 sm:max-w-sm pointer-events-auto relative w-full outline-none', props.class)"
       >
-        <Button variant="ghost" class="absolute top-2 right-2" size="icon-sm">
-          <XIcon />
-          <span class="sr-only">Close</span>
-        </Button>
-      </DialogClose>
-    </DialogContent>
+        <slot />
+
+        <DialogClose
+          v-if="showCloseButton"
+          data-slot="dialog-close"
+          as-child
+        >
+          <Button variant="ghost" class="absolute top-2 right-2" size="icon-sm">
+            <XIcon />
+            <span class="sr-only">Close</span>
+          </Button>
+        </DialogClose>
+      </DialogContent>
+    </div>
   </DialogPortal>
 </template>

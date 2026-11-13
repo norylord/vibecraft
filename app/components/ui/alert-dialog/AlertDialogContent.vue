@@ -36,18 +36,20 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
       data-slot="alert-dialog-overlay"
       class="data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs fixed inset-0 z-50"
     />
-    <AlertDialogContent
-      data-slot="alert-dialog-content"
-      :data-size="size"
-      v-bind="{ ...$attrs, ...forwarded }"
-      :class="
-        cn(
-          'data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 bg-popover text-popover-foreground ring-foreground/10 gap-3 rounded-xl p-4 ring-1 duration-100 data-[size=default]:max-w-xs data-[size=sm]:max-w-64 data-[size=default]:sm:max-w-sm group/alert-dialog-content fixed inset-0 m-auto h-fit z-50 grid w-full outline-none',
-          props.class,
-        )
-      "
-    >
-      <slot />
-    </AlertDialogContent>
+    <div class="pointer-events-none fixed inset-0 z-50 grid place-items-center">
+      <AlertDialogContent
+        data-slot="alert-dialog-content"
+        :data-size="size"
+        v-bind="{ ...$attrs, ...forwarded }"
+        :class="
+          cn(
+            'data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 bg-popover text-popover-foreground ring-foreground/10 gap-3 rounded-xl p-4 ring-1 duration-100 data-[size=default]:max-w-xs data-[size=sm]:max-w-64 data-[size=default]:sm:max-w-sm group/alert-dialog-content pointer-events-auto relative grid w-full outline-none',
+            props.class,
+          )
+        "
+      >
+        <slot />
+      </AlertDialogContent>
+    </div>
   </AlertDialogPortal>
 </template>
